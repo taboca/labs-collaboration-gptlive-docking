@@ -56,7 +56,9 @@ Run `npm install` and restart Node after updating. Three.js is served locally an
 
 ## Responsibility zones
 
-The interface shows communication on the left, the 3D scene in the center, commands on the right, and environment readings in the top bar.
+The interface frames the 3D scene with two independently scrolling consoles, tilted inward by 7° on desktop. The left uses green metallic cards for transcription, mission time, energy, analysis, thrust/braking, and docking. The right uses gray metallic cards for conversation controls, pilot rotation/alignment, radio, and expandable reference/developer information. Smaller screens flatten or stack the consoles.
+
+Status inspection shares the Analysis card, and forward thrust and braking share one Thrust card. These are visual groupings; the delegated tools and actor permissions remain distinct.
 
 | Zone | Responsibility |
 | --- | --- |

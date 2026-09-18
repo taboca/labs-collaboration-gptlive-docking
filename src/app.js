@@ -122,7 +122,7 @@ function liveEvent(event) {
 
 function toolPanel(name, state, text) {
   const panel = $({ analyze_rotation_speed: "analysisCommand", dock_objects: "dockCommand",
-    inspect_starship: "inspectCommand", approach_station: "approachCommand", brake_ship: "brakeCommand" }[name]);
+    inspect_starship: "analysisCommand", approach_station: "thrustCommand", brake_ship: "thrustCommand" }[name]);
   panel.dataset.state = state;
   panel.querySelector("output").textContent = text;
 }
