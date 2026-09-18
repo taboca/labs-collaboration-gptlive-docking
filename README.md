@@ -2,6 +2,8 @@
 
 ![Starship docking scene](doc_starship.png)
 
+▶️ [Watch the demo on YouTube](https://www.youtube.com/watch?v=uiRx9m6eeXY)
+
 A small teaching demo for exploring GPT-Live over WebRTC. A human pilot and a voice copilot share one browser-owned Starship:
 
 - the pilot sets rotation speed and aligns the ship by hand;
