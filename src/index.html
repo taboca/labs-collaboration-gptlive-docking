@@ -1,0 +1,113 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>GPT-Live · Starship Docking</title>
+  <link rel="stylesheet" href="/styles.css">
+  <script type="module" src="/app.js"></script>
+</head>
+<body>
+  <div id="stars" aria-hidden="true"></div>
+  <header>
+    <div><p class="eyebrow">Collaboration experiment / 01</p><h1>STARSHIP <span>DOCKING</span></h1></div>
+    <section class="environment-readings" aria-label="Environment readings">
+      <div class="environment-state"><small>Environment</small><strong id="environmentState">IDLE</strong></div>
+      <div class="header-gauge">
+        <label class="gauge-label" for="timeGauge">Mission time <output id="timer">01:00</output></label>
+        <progress id="timeGauge" max="100" value="100"></progress>
+      </div>
+      <div class="header-gauge">
+        <label class="gauge-label" for="energyGauge">Starship energy <output id="energy">100%</output></label>
+        <progress id="energyGauge" max="100" value="100"></progress>
+      </div>
+      <small class="life-support">Life support: 0.15 energy/sec + command costs</small>
+    </section>
+    <div class="session-controls">
+      <button id="startButton">Start conversation</button>
+      <button id="endButton" disabled>End</button>
+      <span id="status" role="status">Standby</span>
+    </div>
+  </header>
+  <main>
+    <section class="communications panel" aria-label="Live communication">
+      <h2>01 / Communications</h2>
+      <div class="activity">
+        <div id="activityOrb" data-activity="idle" aria-hidden="true"><span></span></div>
+        <p id="activityLabel">Standby</p>
+        <small>Voice / Live event activity</small>
+      </div>
+      <p id="delegationStatus" role="status">Awaiting a voice request.</p>
+      <h3>Transmission log</h3>
+      <div id="transcript" role="log" aria-label="Conversation transcript"></div>
+      <audio id="remoteAudio" autoplay controls playsinline></audio>
+      <small class="session-id">Session <span id="sessionId">—</span></small>
+    </section>
+
+    <section class="scene" aria-label="Starship docking scene">
+      <div class="docking-stage">
+        <div class="reticle" aria-hidden="true"></div>
+        <div id="backgroundBox" class="target-box" aria-label="Rotating target"></div>
+        <div id="foregroundBox" class="ship-box" aria-label="Your starship"></div>
+      </div>
+      <div class="scene-readouts">
+        <div><small>Target analysis</small><strong id="measuredSpeed">Awaiting analysis</strong></div>
+        <div><small>Starship rotation</small><strong id="foregroundSpeed">0°/s</strong></div>
+        <div><small>X / Y offset</small><strong id="centerOffset">—</strong></div>
+      </div>
+      <p id="gameStatus" role="status">Start a conversation to begin the mission.</p>
+    </section>
+
+    <aside class="console panel">
+      <h2>02 / Starship commands</h2>
+      <section id="inspectCommand" class="command" data-actor="model" data-state="idle">
+        <div class="command-heading"><span class="badge model">MODEL</span><span data-cost="inspect"></span></div>
+        <h3>Inspect mission status</h3>
+        <p>Ask about time, energy, angles or alignment.</p>
+        <output>Awaiting voice request</output>
+      </section>
+      <section id="analysisCommand" class="command" data-actor="model" data-state="idle">
+        <div class="command-heading"><span class="badge model">MODEL</span><span data-cost="analyzeRotationSpeed"></span></div>
+        <h3>Analyze rotation speed</h3>
+        <p>Say “analyze the rotation speed”.</p>
+        <output>Awaiting voice request</output>
+      </section>
+      <section id="dockCommand" class="command" data-actor="model" data-state="idle">
+        <div class="command-heading"><span class="badge model">MODEL</span><span data-cost="dock"></span></div>
+        <h3>Dock objects</h3>
+        <p>Say “dock” when aligned.</p>
+        <output>Awaiting voice request</output>
+      </section>
+      <section class="command" data-actor="user">
+        <div class="command-heading"><span class="badge">USER</span><span data-cost="setRotationSpeed"></span></div>
+        <form id="speedForm">
+          <label for="speedInput">Set rotation speed · °/sec</label>
+          <div class="form-row"><input id="speedInput" type="number" min="0.01" max="1000" step="0.01" required disabled><button id="setSpeedButton" disabled>Set</button></div>
+        </form>
+      </section>
+      <section class="command" data-actor="user">
+        <div class="command-heading"><span class="badge">USER</span><span data-cost="beginAlignment"></span></div>
+        <button id="alignButton" disabled>Begin alignment</button>
+        <div id="nudgeControls" hidden>
+          <p>Nudge · <span data-cost="nudge"></span> per step</p>
+          <div class="arrows">
+            <button data-dx="0" data-dy="-5" aria-label="Move up">↑</button>
+            <button data-dx="-5" data-dy="0" aria-label="Move left">←</button>
+            <button data-dx="0" data-dy="5" aria-label="Move down">↓</button>
+            <button data-dx="5" data-dy="0" aria-label="Move right">→</button>
+          </div>
+        </div>
+      </section>
+      <p id="commandFeedback" role="status"></p>
+    </aside>
+  </main>
+  <footer>
+    <details><summary>Reference canvas</summary>
+      <label for="canvasInput">Context to discuss with Live</label>
+      <textarea id="canvasInput" maxlength="1500">Our mission: analyze the target rotation, match speed, align X/Y, then dock. The user controls speed and positioning; the model requests analysis and docking.</textarea>
+      <button id="shareCanvasButton" disabled>Share canvas</button><p id="canvasStatus"></p>
+    </details>
+    <details><summary>Developer events</summary><ol id="eventLog"></ol></details>
+  </footer>
+</body>
+</html>
