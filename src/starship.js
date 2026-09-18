@@ -3,6 +3,8 @@ export const COMMANDS = Object.freeze({
   inspect: { actor: "model", cost: 0 },
   analyzeRotationSpeed: { actor: "model", cost: 6 },
   dock: { actor: "model", cost: 12 },
+  approach: { actor: "model", cost: 3 },
+  brake: { actor: "model", cost: 2 },
   setRotationSpeed: { actor: "user", cost: 4 },
   beginAlignment: { actor: "user", cost: 2 },
   nudge: { actor: "user", cost: 1 },
@@ -19,10 +21,10 @@ export class Starship {
     this.cancelPending("reset");
     Object.assign(this, {
       energy: 100, idleDrainPerSecond: 0.15, targetSpeed: 42, speed: 0,
-      targetAngle: 0, angle: 0, targetSize: 112, size: 154,
-      x: this.randomOffset(), y: this.randomOffset(), tolerance: 5,
+      targetAngle: 0, angle: 0,
+      x: this.randomOffset(), y: this.randomOffset(),
       aligning: false, docked: false, measuredSpeed: null, now,
-      wobbleX: 0, wobbleY: 0,
+      requestedSpeed: 0, distance: 18, velocity: 0, motion: "coast",
     });
   }
 
@@ -30,12 +32,11 @@ export class Starship {
     return (Math.random() < 0.5 ? -1 : 1) * (35 + Math.floor(Math.random() * 21));
   }
 
-  get aligned() { return Math.abs(this.x) <= this.tolerance && Math.abs(this.y) <= this.tolerance; }
+  get aligned() { return Math.hypot(this.x / 50, this.y / 50) + 0.25 <= 0.65; }
   get speedMatched() { return Math.abs(this.speed - this.targetSpeed) <= 0.5; }
   get angleError() {
-    // A square repeats every 90 degrees.
-    const phase = ((this.angle - this.targetAngle) % 90 + 90) % 90;
-    return Math.min(phase, 90 - phase);
+    const phase = ((this.angle - this.targetAngle) % 360 + 360) % 360;
+    return Math.min(phase, 360 - phase);
   }
 
   available(name, actor) {
@@ -60,8 +61,7 @@ export class Starship {
   setRotationSpeed(value, actor) {
     if (!Number.isFinite(value) || value <= 0 || value > 1000) return this.failure("invalid_speed");
     return this.executeCommand("setRotationSpeed", actor, () => {
-      this.speed = value;
-      this.angle = this.targetAngle;
+      this.requestedSpeed = value;
       this.aligning = false;
       this.onEvent({ type: "speed_set", speed: value, matched: this.speedMatched });
       return { status: "completed", speed: value };
@@ -105,12 +105,32 @@ export class Starship {
       rotation_angle_degrees: ((this.angle % 360) + 360) % 360,
       target_angle_degrees: ((this.targetAngle % 360) + 360) % 360,
       angle_error_degrees: this.angleError, docking_cost: COMMANDS.dock.cost,
-      can_dock: this.available("dock", "model"), cost: 0 };
+      can_dock: this.available("dock", "model") && this.lockReady, cost: 0 };
+  }
+
+  get lockReady() { return this.aligned && this.speedMatched && this.distance <= 0.3 &&
+    this.distance >= -0.3 && this.velocity <= 0.15; }
+
+  approach(actor) {
+    return this.executeCommand("approach", actor, () => {
+      this.motion = "thrust";
+      return { status: "completed", message: "Forward thrust engaged. Brake before contact.",
+        distance: this.distance, velocity: this.velocity };
+    });
+  }
+
+  brake(actor) {
+    return this.executeCommand("brake", actor, () => {
+      this.motion = "brake";
+      return { status: "completed", message: "Braking engaged; inspect for actual stopping speed.",
+        distance: this.distance, velocity: this.velocity };
+    });
   }
 
   dock(actor, durationMs = 1400) {
     return this.executeCommand("dock", actor, () => new Promise(resolve => {
-      this.pending = { kind: "dock", resolve, start: this.now, startSize: this.size,
+      this.pending = { kind: "dock", resolve, start: this.now,
+        startedReady: this.lockReady,
         duration: this.duration(durationMs, 1400) };
     }));
   }
@@ -126,7 +146,18 @@ export class Starship {
       return;
     }
     this.targetAngle += this.targetSpeed * elapsedSeconds;
+    const wasMatched = this.speedMatched;
+    this.speed += Math.sign(this.requestedSpeed - this.speed) *
+      Math.min(Math.abs(this.requestedSpeed - this.speed), elapsedSeconds * 18);
+    if (!wasMatched && this.speedMatched) this.onEvent({ type: "rotation_matched" });
     this.angle += this.speed * elapsedSeconds;
+    const before = this.velocity;
+    if (this.motion === "thrust") this.velocity = Math.min(1.8, this.velocity + elapsedSeconds * 0.6);
+    if (this.motion === "brake") this.velocity = Math.max(0, this.velocity - elapsedSeconds * 1.2);
+    this.distance -= (before + this.velocity) / 2 * elapsedSeconds;
+    if (this.distance < -0.3 || (this.distance <= 0 && (!this.aligned || this.velocity > 0.15))) {
+      this.environment.fail("unsafe_contact");
+    }
     this.energy = Math.max(0, this.energy - elapsedSeconds * this.idleDrainPerSecond);
     this.environment.updateFromStarship(this.snapshot());
     if (!this.environment.allowsCommands) {
@@ -137,12 +168,6 @@ export class Starship {
     if (!operation) return;
     const elapsed = now - operation.start;
     const progress = Math.min(1, elapsed / operation.duration);
-    if (operation.kind === "dock") {
-      this.size = operation.startSize + (this.targetSize - operation.startSize) * (1 - (1 - progress) ** 3);
-      // Turbulence is a visual approach effect; it decays to zero at contact.
-      this.wobbleX = Math.sin(now / 37) * 3 * (1 - progress);
-      this.wobbleY = Math.cos(now / 43) * 3 * (1 - progress);
-    }
     if (progress < 1) return;
     this.pending = null;
     if (operation.kind === "analysis") {
@@ -152,15 +177,12 @@ export class Starship {
       return;
     }
     const measurements = {
-      center_offset_x: this.x, center_offset_y: this.y, width_px: this.size,
-      tolerance_px: this.tolerance, speed_error: Math.abs(this.speed - this.targetSpeed),
+      center_offset_x: this.x / 50, center_offset_y: this.y / 50,
+      distance: this.distance, velocity: this.velocity, speed_error: Math.abs(this.speed - this.targetSpeed),
       angle_error: this.angleError, energy: this.energy,
     };
-    this.docked = this.aligned && this.speedMatched && this.angleError <= 5 &&
-      Math.abs(this.size - this.targetSize) <= this.tolerance;
+    this.docked = operation.startedReady && this.lockReady;
     this.environment.updateFromStarship(this.snapshot());
-    // A miss is a spent attempt, not a terminal mission failure. Return to approach size.
-    if (!this.docked) this.size = 154;
     operation.resolve({ ...measurements, status: this.docked ? "completed" : "failed",
       reason: this.docked ? null : "docking_missed",
       message: this.docked ? "Browser confirmed docking." :
@@ -178,10 +200,12 @@ export class Starship {
 
   snapshot() {
     return { energy: this.energy, targetAngle: this.targetAngle, angle: this.angle,
-      targetSize: this.targetSize, size: this.size, x: this.x, y: this.y,
+      x: this.x, y: this.y,
       speed: this.speed, targetSpeed: this.targetSpeed, measuredSpeed: this.measuredSpeed,
       aligned: this.aligned, speedMatched: this.speedMatched, aligning: this.aligning,
-      docked: this.docked, busy: Boolean(this.pending),
-      wobbleX: this.wobbleX, wobbleY: this.wobbleY };
+      requestedSpeed: this.requestedSpeed, distance: this.distance, velocity: this.velocity,
+      motion: this.motion, stoppingDistance: this.velocity ** 2 / 2.4,
+      lockReady: this.lockReady, portRadius: 0.65, guideRadius: 0.25,
+      docked: this.docked, busy: Boolean(this.pending) };
   }
 }

@@ -38,13 +38,25 @@ Open [http://localhost:3000](http://localhost:3000) in Chrome and click **Start 
 3. Enter the reported value in **Set rotation speed**.
 4. Click **Begin alignment** and use the controls or arrow keys to align X/Y.
 5. Ask **“How much time and energy remain?”**, **“What is our angle?”**, or **“Are we aligned?”**.
-6. Ask **“Dock.”** A docking attempt is allowed at any time while the mission is active and energy remains, even if alignment is incomplete.
-7. A miss costs 12 energy and takes time. The ship returns to its approach size so you can try again.
-8. Time expiration or zero energy ends the mission. Live is instructed to say, “See you on the other side.”
+6. Ask **“Approach the station.”** Watch distance, speed and stopping distance. Ask **“Brake”** early, allowing for voice latency.
+7. Near the tube, use short thrust/brake corrections. Ask **“Lock dock”** when aligned, rotation matched, distance between −0.3 and 0.3 and speed at most 0.15. Failed locking costs 12 energy and takes time.
+8. Time expiration, zero energy or unsafe contact ends the mission. Live is instructed to say, “See you on the other side.”
+
+## The 3D cockpit
+
+[Three.js](https://github.com/mrdoob/three.js/) renders twelve box modules around a ring, connecting spokes, a central docking tube and stars. `src/world.js` exposes `World.render(starshipSnapshot)` and projects game state into the canvas. `Starship` owns physics and capture decisions; `Environment` owns the mission clock.
+
+Rotation accelerates gradually at 18°/s². The camera rolls with the pilot's ship, making the stars rotate. At matching angular speeds the station appears stationary. The green circle is a docking collar two units ahead of the camera. Pilot arrows move along cockpit X/Y axes.
+
+Model tools `approach_station` and `brake_ship` engage persistent thrust and braking through the existing Node bridge. Their results confirm the mode was applied, not that the ship has stopped. Thrust accelerates at 0.6 units/s², capped at 1.8; braking decelerates at 1.2 units/s². Inspect actual velocity and stopping distance. Allow extra distance for voice/tool latency; there is no automatic braking.
+
+The collar radius is 0.25 and the port radius is 0.65. The whole collar must fit inside the port. Locking checks alignment, matched rotation, proximity and low speed both at request and after the lock delay. Circular docking does not require matched angular phase. Fast or off-center contact, or entry deeper than 0.3 units, fails the mission. Distances are illustrative scene units.
+
+Run `npm install` and restart Node after updating. Three.js is served locally and requires WebGL2. The screenshot above shows the earlier 2D version.
 
 ## Responsibility zones
 
-The interface makes the zones visible: communication on the left, the Starship scene in the center, and commands/environment on the right.
+The interface shows communication on the left, the 3D scene in the center, commands on the right, and environment readings in the top bar.
 
 | Zone | Responsibility |
 | --- | --- |
@@ -115,6 +127,8 @@ This project keeps the Node sideband because it demonstrates a different lesson:
 | `Starship.inspect("model")` | MODEL | 0 |
 | `Starship.analyzeRotationSpeed("model")` | MODEL | 6 |
 | `Starship.dock("model")` | MODEL | 12 |
+| `Starship.approach("model")` | MODEL | 3 |
+| `Starship.brake("model")` | MODEL | 2 |
 | `Starship.setRotationSpeed(value, "user")` | USER | 4 |
 | `Starship.beginAlignment("user")` | USER | 2 |
 | `Starship.nudge(x, y, "user")` | USER | 1 |
@@ -131,10 +145,10 @@ Start the conversation and grant microphone access. The mission clock begins imm
 
 1. Ask GPT-Live to analyze the rotation speed.
 2. Listen for the measured value and enter it in the user speed form.
-3. Begin alignment and move the outline ship by hand until the center offset is within the tolerance.
+3. Wait for rotation to match, begin alignment, and steer the green collar toward the tube.
 4. Ask for current time, energy, angle, or alignment when you want to inspect the live state.
-5. Ask GPT-Live to dock, including before alignment if you want to observe a failed attempt.
-6. Observe that a docking attempt consumes energy and time. A miss returns the ship to approach size and leaves the mission available for another attempt.
+5. Ask for thrust and braking; inspect actual approach speed and stopping distance.
+6. Ask to lock in the capture zone. Failed locks spend resources without moving the ship. Unsafe physical contact fails the mission.
 7. Complete a successful dock, or let time and energy run out to observe the terminal path.
 
 ### What the user can do
@@ -167,6 +181,7 @@ The screenshot is referenced by the filename `doc_unexpected_image.png` at the p
 server.mjs             Live session, tools, API key, sideband and /ws bridge
 src/environment.js     Mission clock and terminal conditions
 src/starship.js        Commands, actors, costs, energy and geometry
+src/world.js           Three.js station, stars, cockpit camera and green collar
 src/live-client.js     WebRTC bootstrap, audio, data channel and browser bridge
 src/app.js             Connects domain events, transport and UI
 src/index.html         Communications, scene and command console

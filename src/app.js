@@ -1,9 +1,13 @@
 import { Environment } from "./environment.js";
 import { Starship, COMMANDS } from "./starship.js";
 import { LiveClient } from "./live-client.js";
+import { World } from "./world.js";
 
 // Composition root: UI renders snapshots and sends commands with an explicit actor.
 const $ = id => document.getElementById(id);
+let worldView;
+try { worldView = new World($("world")); }
+catch (error) { $("world").textContent = "3D view unavailable. Enable WebGL2 and reload. " + error.message; }
 let connected = false;
 let activityTimeout;
 let lastSpeaker;
@@ -23,7 +27,8 @@ const live = new LiveClient({
       $("sessionId").textContent = live.sessionId;
       live.context("Mission is underway. Help the pilot dock the Starship. " +
         "Only the pilot sets speed and aligns X/Y by hand. You can inspect status, analyze speed, " +
-        "and attempt docking through your delegated tools. Current browser telemetry: " +
+        "engage forward thrust, brake, and lock the dock through your delegated tools. " +
+        "Brake early; lock only near the tube at low speed. Current browser telemetry: " +
         JSON.stringify(starship.inspect("model")), false);
     }
     if (closed) {
@@ -58,13 +63,14 @@ function environmentChanged(state) {
 
 function starshipChanged(event) {
   log("Starship: " + event.type, event);
+  if (event.type === "rotation_matched") live.context("Rotation now matched. Align is ready; the station appears still.");
   if (event.type === "speed_set")
     live.context("User set rotation speed to " + event.speed + " degrees per second. " +
       (event.matched ? "Rotation speed matched. Align is ready." : "Speed is not matched yet."));
   if (event.type === "alignment_started")
     live.context("User began alignment. They control X and Y using the arrows.", false);
   if (event.type === "alignment_changed")
-    live.context(event.aligned ? "Centers are aligned within 5 pixels. User may ask to dock."
+    live.context(event.aligned ? "Green guide fits inside the tube laterally. Check distance and velocity before locking."
       : "Centers are no longer aligned.", event.aligned);
 }
 
@@ -116,7 +122,7 @@ function liveEvent(event) {
 
 function toolPanel(name, state, text) {
   const panel = $({ analyze_rotation_speed: "analysisCommand", dock_objects: "dockCommand",
-    inspect_starship: "inspectCommand" }[name]);
+    inspect_starship: "inspectCommand", approach_station: "approachCommand", brake_ship: "brakeCommand" }[name]);
   panel.dataset.state = state;
   panel.querySelector("output").textContent = text;
 }
@@ -132,7 +138,7 @@ async function bridgeEvent(event) {
     $("delegationStatus").textContent = "Node sent the tool output to Responses.";
     return;
   }
-  const name = ["analyze_rotation_speed", "dock_objects", "inspect_starship"]
+  const name = ["analyze_rotation_speed", "dock_objects", "inspect_starship", "approach_station", "brake_ship"]
     .find(name => event.type === name + ".request");
   if (!name) {
     if (event.type.endsWith(".error")) $("delegationStatus").textContent = event.message || "Bridge error";
@@ -146,6 +152,8 @@ async function bridgeEvent(event) {
   const result = await (name === "analyze_rotation_speed"
     ? starship.analyzeRotationSpeed("model", event.sample_ms)
     : name === "dock_objects" ? starship.dock("model", event.duration_ms)
+    : name === "approach_station" ? starship.approach("model")
+    : name === "brake_ship" ? starship.brake("model")
     : starship.inspect("model"));
   if (generation !== live.generation) return;
   operations.set(event.call_id, result);
@@ -176,14 +184,12 @@ function render() {
   document.querySelectorAll("[data-dx]").forEach(button => {
     button.disabled = !enabled || !ship.aligning || !starship.available("nudge", "user");
   });
-  $("backgroundBox").style.transform = "rotate(" + ship.targetAngle % 360 + "deg)";
-  $("foregroundBox").style.width = ship.size + "px";
-  $("foregroundBox").style.height = ship.size + "px";
-  $("foregroundBox").style.transform = "translate(" + (ship.x + ship.wobbleX) + "px," +
-    (ship.y + ship.wobbleY) + "px) rotate(" + ship.angle % 360 + "deg)";
+  worldView?.render(ship);
+  $("approachReadout").textContent = ship.distance.toFixed(2) + " / " + ship.velocity.toFixed(2);
+  $("stoppingReadout").textContent = ship.stoppingDistance.toFixed(2) + " · " + ship.motion;
   $("measuredSpeed").textContent = ship.measuredSpeed === null ? "Awaiting analysis" : ship.measuredSpeed.toFixed(2) + "°/s";
   $("foregroundSpeed").textContent = ship.speed.toFixed(2) + "°/s";
-  $("centerOffset").textContent = ship.x + " / " + ship.y + " px";
+  $("centerOffset").textContent = (ship.x / 50).toFixed(2) + " / " + (ship.y / 50).toFixed(2);
   const seconds = Math.ceil(world.remainingMs / 1000);
   $("timer").textContent = "00:" + String(seconds).padStart(2, "0");
   if (seconds === 60) $("timer").textContent = "01:00";
@@ -195,8 +201,9 @@ function render() {
     : world.state === "failed" ? "MISSION FAILED / " + world.reason.replaceAll("_", " ")
     : world.state !== "running" ? "Start a conversation to begin the mission."
     : ship.busy ? "Executing model command…"
-    : ship.aligning && ship.aligned ? "Centers aligned. Ask Live to dock."
-    : ship.aligning ? "Adjust X / Y. Tolerance ±5 px."
+    : ship.lockReady ? "In capture zone. Ask Live to lock dock."
+    : ship.aligning && ship.aligned ? "Aligned. Ask for thrust or braking; watch distance."
+    : ship.aligning ? "Steer X / Y to center the green guide inside the tube."
     : ship.speedMatched ? "Speed matched. Align is ready."
     : "Ask Live to analyze the rotation speed.";
   $("gameStatus").dataset.state = world.state;
@@ -210,7 +217,7 @@ $("startButton").addEventListener("click", () => {
   lastSpeaker = null;
   $("speedInput").value = "";
   $("commandFeedback").textContent = "";
-  for (const name of ["analyze_rotation_speed", "dock_objects", "inspect_starship"])
+  for (const name of ["analyze_rotation_speed", "dock_objects", "inspect_starship", "approach_station", "brake_ship"])
     toolPanel(name, "idle", "Awaiting voice request");
   $("startButton").disabled = true;
   $("endButton").disabled = false;
@@ -256,9 +263,12 @@ for (const element of document.querySelectorAll("[data-cost]"))
 // Static star positions; only a small subset twinkle via CSS.
 for (let i = 0; i < 90; i++) {
   const star = document.createElement("i");
-  star.style.left = ((i * 37.37) % 100) + "%";
-  star.style.top = ((i * 61.13) % 100) + "%";
-  star.style.animationDelay = -(i % 7) + "s";
+  star.style.left = Math.random() * 100 + "%";
+  star.style.top = Math.random() * 100 + "%";
+  const size = Math.random() < 0.1 ? 3 : 1 + Math.random();
+  star.style.width = star.style.height = size + "px";
+  star.style.opacity = 0.15 + Math.random() * 0.55;
+  star.style.animationDelay = -Math.random() * 7 + "s";
   if (i % 8 === 0) star.className = "twinkle";
   $("stars").append(star);
 }

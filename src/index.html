@@ -6,6 +6,7 @@
   <title>GPT-Live · Starship Docking</title>
   <link rel="stylesheet" href="/styles.css">
   <script type="module" src="/app.js"></script>
+  <script type="module" src="/radio.js"></script>
 </head>
 <body>
   <div id="stars" aria-hidden="true"></div>
@@ -45,21 +46,19 @@
     </section>
 
     <section class="scene" aria-label="Starship docking scene">
-      <div class="docking-stage">
-        <div class="reticle" aria-hidden="true"></div>
-        <div id="backgroundBox" class="target-box" aria-label="Rotating target"></div>
-        <div id="foregroundBox" class="ship-box" aria-label="Your starship"></div>
-      </div>
+      <div id="world" class="docking-stage" aria-label="Cockpit view of the ring station and green docking guide"></div>
       <div class="scene-readouts">
         <div><small>Target analysis</small><strong id="measuredSpeed">Awaiting analysis</strong></div>
         <div><small>Starship rotation</small><strong id="foregroundSpeed">0°/s</strong></div>
         <div><small>X / Y offset</small><strong id="centerOffset">—</strong></div>
+        <div><small>Distance / speed</small><strong id="approachReadout">—</strong></div>
+        <div><small>Stopping distance / drive</small><strong id="stoppingReadout">—</strong></div>
       </div>
       <p id="gameStatus" role="status">Start a conversation to begin the mission.</p>
     </section>
 
     <aside class="console panel">
-      <h2>02 / Starship commands</h2>
+      <h2>02 / Copilot commands</h2>
       <section id="inspectCommand" class="command" data-actor="model" data-state="idle">
         <div class="command-heading"><span class="badge model">MODEL</span><span data-cost="inspect"></span></div>
         <h3>Inspect mission status</h3>
@@ -74,10 +73,21 @@
       </section>
       <section id="dockCommand" class="command" data-actor="model" data-state="idle">
         <div class="command-heading"><span class="badge model">MODEL</span><span data-cost="dock"></span></div>
-        <h3>Dock objects</h3>
-        <p>Say “dock” when aligned.</p>
+        <h3>Lock dock</h3>
+        <p>Close, aligned, and nearly stopped: say “lock dock”.</p>
         <output>Awaiting voice request</output>
       </section>
+      <section id="approachCommand" class="command" data-actor="model" data-state="idle">
+        <div class="command-heading"><span class="badge model">MODEL</span><span data-cost="approach"></span></div>
+        <h3>Forward thrust</h3><p>Say “approach the station”.</p><output>Awaiting voice request</output>
+      </section>
+      <section id="brakeCommand" class="command" data-actor="model" data-state="idle">
+        <div class="command-heading"><span class="badge model">MODEL</span><span data-cost="brake"></span></div>
+        <h3>Brake</h3><p>Say “brake” early. Stopping takes time.</p><output>Awaiting voice request</output>
+      </section>
+    </aside>
+    <section class="pilot-console panel" aria-label="Pilot controls">
+      <h2>03 / Pilot controls</h2>
       <section class="command" data-actor="user">
         <div class="command-heading"><span class="badge">USER</span><span data-cost="setRotationSpeed"></span></div>
         <form id="speedForm">
@@ -98,13 +108,20 @@
           </div>
         </div>
       </section>
+      <section class="command radio" data-actor="user">
+        <div class="command-heading"><span class="badge">USER</span><span>Cabin radio</span></div>
+        <button id="radioToggle" aria-expanded="false" aria-controls="radioPlayer">Expand radio · Play</button>
+        <div id="radioPlayer" hidden></div>
+        <p>Expand to play; collapse to stop. If playback is blocked, press Play in the video.</p>
+        <a href="https://www.youtube.com/watch?v=1GhGN14R7Jg" target="_blank" rel="noopener noreferrer">Open on YouTube</a>
+      </section>
       <p id="commandFeedback" role="status"></p>
-    </aside>
+    </section>
   </main>
   <footer>
     <details><summary>Reference canvas</summary>
       <label for="canvasInput">Context to discuss with Live</label>
-      <textarea id="canvasInput" maxlength="1500">Our mission: analyze the target rotation, match speed, align X/Y, then dock. The user controls speed and positioning; the model requests analysis and docking.</textarea>
+      <textarea id="canvasInput" maxlength="1500">Our mission: match the ring station rotation, align the green collar with its central tube, approach slowly, brake, and lock dock. The user controls rotation and X/Y. The model measures rotation, inspects telemetry, engages forward thrust, brakes, and locks on request.</textarea>
       <button id="shareCanvasButton" disabled>Share canvas</button><p id="canvasStatus"></p>
     </details>
     <details><summary>Developer events</summary><ol id="eventLog"></ol></details>

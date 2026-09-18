@@ -29,7 +29,16 @@ button:focus-visible, input:focus-visible, textarea:focus-visible, summary:focus
 .header-gauge .gauge-label { margin: 0 0 4px; font-size: 10px; }
 .header-gauge progress { height: 5px; }
 .life-support { grid-column: 1 / -1; color: #668b79; font-size: 9px; }
-main { display: grid; grid-template-columns: minmax(220px, .85fr) minmax(330px, 1.5fr) minmax(280px, 1fr); gap: 24px; padding: 30px 3vw; max-width: 1800px; margin: auto; }
+main { display: grid; grid-template-columns: minmax(220px, .7fr) minmax(330px, 1.7fr) minmax(280px, .85fr); grid-template-areas: "communications scene copilot" "pilot pilot pilot"; gap: 20px; padding: 24px 3vw; max-width: 1800px; margin: auto; }
+.communications { grid-area: communications; }
+.scene { grid-area: scene; }
+.console { grid-area: copilot; }
+.pilot-console { grid-area: pilot; display: grid; grid-template-columns: 1fr 1fr minmax(240px, 1.4fr); align-items: start; gap: 12px 20px; }
+.pilot-console > h2, .pilot-console > #commandFeedback { grid-column: 1 / -1; margin: 0; }
+.pilot-console .command { margin: 0; }
+.radio a { color: #203d59; font-size: 11px; }
+#radioPlayer { margin-top: 12px; }
+#radioPlayer iframe { display: block; width: 100%; min-height: 200px; aspect-ratio: 16 / 9; border: 0; background: #000; }
 .panel { padding: 20px; border: 1px solid #213e33; background: #04100dcc; min-width: 0; }
 .communications { display: flex; flex-direction: column; }
 .activity { display: grid; justify-items: center; padding: 22px 0 16px; }
@@ -48,13 +57,10 @@ audio { width: 100%; height: 32px; margin: 20px 0 12px; }
 .session-id { overflow-wrap: anywhere; }
 .scene { display: grid; grid-template-rows: minmax(350px, 1fr) auto auto; min-width: 0; text-align: center; padding: 0 0 20px; }
 .docking-stage { display: grid; place-items: center; min-height: 350px; overflow: hidden; isolation: isolate; }
+#world { position: relative; min-height: 480px; }
+#world canvas { position: absolute; inset: 0; width: 100%; height: 100%; }
+.console { max-height: 850px; overflow-y: auto; }
 .docking-stage > div { grid-area: 1 / 1; }
-.target-box { width: 112px; height: 112px; background: #327d8b; border: 1px solid #81e5e0; box-shadow: 0 0 35px #49b1b326; }
-.ship-box { width: 154px; height: 154px; border: 2px solid #bcffd0; box-shadow: 0 0 18px #7de49a20; }
-.reticle { width: 280px; height: 280px; border-radius: 50%; border: 1px dashed #204239; position: relative; z-index: -1; }
-.reticle::before, .reticle::after { content: ""; position: absolute; background: #204239; }
-.reticle::before { width: 100%; height: 1px; top: 50%; left: 0; }
-.reticle::after { height: 100%; width: 1px; left: 50%; top: 0; }
 .scene-readouts { display: flex; justify-content: center; gap: 20px; flex-wrap: wrap; }
 .scene-readouts small, .scene-readouts strong { display: block; }
 .scene-readouts strong { font-size: 12px; margin-top: 8px; font-weight: normal; }
@@ -100,8 +106,12 @@ textarea { display: block; width: 100%; min-height: 100px; margin: 12px 0; paddi
   header { grid-template-columns: minmax(180px, 1fr) minmax(280px, 1.4fr); }
   .environment-readings { grid-column: 1 / -1; grid-row: 2; }
   .session-controls { grid-column: 2; grid-row: 1; justify-self: end; }
-  main { grid-template-columns: minmax(200px, 1fr) minmax(330px, 1.5fr); }
-  .console { grid-column: 1 / -1; }
+  main { grid-template-columns: minmax(200px, 1fr) minmax(330px, 1.5fr); grid-template-areas: "communications scene" "copilot copilot" "pilot pilot"; }
+  .console { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+  .console h2 { grid-column: 1 / -1; }
+  .console .command { margin: 0; }
+  .pilot-console { grid-template-columns: 1fr 1fr; }
+  .radio { grid-column: 1 / -1; }
 }
 @media (max-width: 620px) {
   header { grid-template-columns: 1fr; align-items: flex-start; }
@@ -109,7 +119,8 @@ textarea { display: block; width: 100%; min-height: 100px; margin: 12px 0; paddi
   .environment-state, .life-support { grid-column: 1 / -1; }
   .session-controls { grid-column: 1; grid-row: auto; justify-self: start; }
   main, footer { grid-template-columns: 1fr; }
-  .scene { grid-row: 1; }
+  main { grid-template-areas: "scene" "pilot" "communications" "copilot"; }
+  .pilot-console, .console { grid-template-columns: 1fr; }
   .docking-stage { min-height: 330px; }
 }
 @media (prefers-reduced-motion: reduce) {

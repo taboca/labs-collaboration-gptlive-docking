@@ -44,7 +44,7 @@ const analyzeRotationSpeedTool = {
   name: "analyze_rotation_speed",
   description:
     "Ask the browser to measure the current angular speed of the continuously rotating " +
-    "filled square. Wait for the browser measurement before reporting a value.",
+    "ring station. Wait for the browser measurement before reporting a value.",
   parameters: {
     type: "object",
     properties: {},
@@ -58,8 +58,8 @@ const dockObjectsTool = {
   type: "function",
   name: "dock_objects",
   description:
-    "Ask the browser to attempt docking the rotating filled square and the user-controlled " +
-    "outline square. The browser checks their centers and final widths. Wait for its result " +
+    "Ask the browser to lock the dock. Requires distance between -0.3 and 0.3, velocity <=0.15, " +
+    "matched rotation and the green guide fully inside the port. Wait for its result " +
     "and never claim docking succeeded without a completed result.",
   parameters: {
     type: "object",
@@ -80,21 +80,29 @@ const inspectStarshipTool = {
   strict: true,
 };
 
+const approachTools = [
+  ["approach_station", "Engage forward thrust towards the station. Acceleration 0.6 units/s², capped at 1.8 units/s. Persists until braking. Inspect distance and stoppingDistance; brake early."],
+  ["brake_ship", "Engage braking at 1.2 units/s² until stopped. It takes time to stop. Inspect actual velocity before locking. Unsafe contact fails the mission."],
+].map(([name, description]) => ({ type: "function", name, description,
+  parameters: { type: "object", properties: {}, required: [], additionalProperties: false }, strict: true }));
+
 // Live owns the spoken interaction. Responses owns delegated reasoning and
 // waits for the function_call_output that Node sends after the browser result.
 const liveSession = {
   model: "gpt-live-1",
   instructions:
     "You are the pilot's voice copilot for a Starship docking mission. Be concise, natural, " +
-    "and interruptible. The goal is to dock the outline ship with the rotating filled target " +
+    "and interruptible. The goal is to approach the ring station and lock into its central tube " +
     "before time or energy runs out. Delegate analysis, status checks and docking to Responses. " +
     "You can inspect energy, remaining time, rotation angles and alignment, analyze target speed, " +
-    "and attempt docking. Only the human pilot may set rotation speed and adjust X/Y alignment " +
+    "apply forward thrust, brake and lock docking. Rotation accelerates to the user's setting. " +
+    "Use approach_station and brake_ship on pilot request; warn to brake early and inspect distance, velocity and stoppingDistance. " +
+    "Only the human pilot may set rotation speed and adjust X/Y alignment " +
     "by hand; explain what to enter without claiming to operate those controls. " +
     "Docking may be attempted at any time while the mission is running and energy is sufficient, " +
     "even when misaligned. Each attempt costs energy and time. A miss allows another attempt. " +
     "Wait for browser results before reporting facts or success. Congratulate a successful dock. " +
-    "Only when time expires or energy reaches zero, say: 'See you on the other side.'",
+    "When time expires, energy reaches zero or unsafe contact ends the mission, say: 'See you on the other side.'",
   delegation: {
     type: "responses",
     responses: {
@@ -104,13 +112,16 @@ const liveSession = {
         "for fresh time, energy, angles, alignment and command availability; never guess from " +
         "an old snapshot. Use analyze_rotation_speed for a measured target speed and tell the " +
         "pilot what degrees/sec to enter. You cannot set speed or alignment: those are user commands. " +
+        "Use approach_station to engage persistent thrust and brake_ship to decelerate on pilot request. " +
+        "Inspect distance, velocity and stoppingDistance. Brake early; unsafe contact ends the mission. " +
+        "Lock requires distance -0.3..0.3, velocity <=0.15, matched rotation and guide inside port. " +
         "When the pilot asks to dock, call dock_objects even if not aligned; browser rules decide " +
         "whether the attempt is allowed. Docking costs 12 energy and takes time. Wait for completion. " +
         "A miss burns resources but permits retry while time and energy remain. Explain a miss and " +
         "help the pilot recalibrate. Congratulate success only after the browser confirms. " +
         "If time_expired or energy_depleted is reported, request the phrase 'See you on the other side.' " +
         "The browser owns all game facts. Report returned results without recomputing success.",
-      tools: [analyzeRotationSpeedTool, dockObjectsTool, inspectStarshipTool],
+      tools: [analyzeRotationSpeedTool, dockObjectsTool, inspectStarshipTool, ...approachTools],
       tool_choice: "auto",
       parallel_tool_calls: false,
     },
@@ -119,6 +130,7 @@ const liveSession = {
 
 app.use(express.json({ limit: "64kb" }));
 app.use(express.static(sourceDir, { index: false }));
+app.use('/vendor/three', express.static(new URL('./node_modules/three/build', import.meta.url).pathname));
 
 function compactJson(value) {
   try {
@@ -170,6 +182,8 @@ function sendSideband(state, event) {
 }
 
 function operationMessage(operation) {
+  if (["approach_station", "brake_ship"].includes(operation.name))
+    return { type: operation.name + ".request", call_id: operation.callId };
   if (operation.name === "inspect_starship") {
     return { type: "inspect_starship.request", call_id: operation.callId };
   }
@@ -247,7 +261,7 @@ function queueClientOperation(state, item, envelope) {
     return;
   }
 
-  if (!["analyze_rotation_speed", "dock_objects", "inspect_starship"].includes(name)) {
+  if (!["analyze_rotation_speed", "dock_objects", "inspect_starship", "approach_station", "brake_ship"].includes(name)) {
     logServer(state, "unhandled Responses function call", item);
     return;
   }
@@ -356,7 +370,7 @@ function handleBrowserMessage(state, rawMessage) {
   // remain authoritative for geometry, energy and terminal conditions (R-010).
   const result = { status: completed ? "completed" : "failed" };
   const numbers = ["speed_degrees_per_second", "sample_ms", "energy",
-    "center_offset_x", "center_offset_y", "width_px", "tolerance_px", "speed_error", "angle_error"];
+    "center_offset_x", "center_offset_y", "width_px", "tolerance_px", "speed_error", "angle_error", "distance", "velocity"];
   for (const key of numbers) {
     if (message[key] === undefined) continue;
     if (typeof message[key] !== "number" || !Number.isFinite(message[key])) {
