@@ -12,8 +12,9 @@ export class World {
     const textureLoader = new THREE.TextureLoader();
     textureLoader.load('/blackhole.png', texture => {
       texture.colorSpace = THREE.SRGBColorSpace;
-      const material = new THREE.SpriteMaterial({
+      const material = new THREE.MeshBasicMaterial({
         map: texture, transparent: true, opacity: 0.84, depthWrite: false,
+        side: THREE.DoubleSide,
       });
       // Keep the atmosphere in the upper-left of the world background rather
       // than placing it on the central docking path. It must live in world
