@@ -8,8 +8,8 @@ body { margin: 0; min-width: 320px; overflow: hidden; }
 @keyframes twinkle { 50% { opacity: .15; } }
 .cockpit { display: grid; grid-template-columns: clamp(260px, 25vw, 360px) minmax(0, 1fr) clamp(260px, 25vw, 360px); height: 100dvh; perspective: 1100px; overflow: hidden; }
 .side-console { position: relative; z-index: 1; min-height: 0; overflow-y: auto; overflow-x: hidden; padding: 24px 18px; scrollbar-width: thin; scrollbar-color: #687178 #22282d; background: linear-gradient(100deg, #171c20, #424a50 48%, #23292e); border: 0; }
-.left-console { transform-origin: right center; transform: rotateY(7deg); }
-.right-console { transform-origin: left center; transform: rotateY(-7deg); }
+.left-console { transform-origin: right center; transform: translate(var(--tremor-x, 0px), var(--tremor-y, 0px)) rotateY(7deg); transition: transform 90ms ease-out; }
+.right-console { transform-origin: left center; transform: translate(var(--tremor-x, 0px), var(--tremor-y, 0px)) rotateY(-7deg); transition: transform 90ms ease-out; }
 .scene { min-width: 0; min-height: 0; }
 #world { position: relative; width: 100%; height: 100%; overflow: hidden; }
 #world canvas { display: block; position: absolute; inset: 0; width: 100%; height: 100%; }
@@ -62,7 +62,7 @@ details[open] summary { margin-bottom: 14px; }
 #eventLog li { margin-bottom: 8px; }
 @media (max-width: 900px) {
   .cockpit { grid-template-columns: 244px minmax(0, 1fr) 244px; perspective: none; }
-  .side-console { transform: none; padding: 12px 8px; }
+  .left-console, .right-console { transform: translate(var(--tremor-x, 0px), var(--tremor-y, 0px)); padding: 12px 8px; }
   .command { padding: 12px; }
 }
 @media (max-width: 700px) {

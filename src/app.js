@@ -10,6 +10,9 @@ try { worldView = new World($("world")); }
 catch (error) { $("world").textContent = "3D view unavailable. Enable WebGL2 and reload. " + error.message; }
 let connected = false;
 let activityTimeout;
+let tremorTimer;
+let tremorClearTimer;
+let tremorActive = false;
 let lastSpeaker;
 let lastTranscript;
 let canvasRevision = 0;
@@ -32,6 +35,7 @@ const live = new LiveClient({
         JSON.stringify(starship.inspect("model")), false);
     }
     if (closed) {
+      stopTremor();
       environment.stop();
       starship.cancelPending("conversation_ended");
       $("startButton").disabled = false;
@@ -82,6 +86,40 @@ function activity(kind) {
     $("activityOrb").dataset.activity = "idle";
     $("activityLabel").textContent = connected ? "Channel open" : "Standby";
   }, 1200);
+}
+
+function stopTremor() {
+  tremorActive = false;
+  clearTimeout(tremorTimer);
+  clearTimeout(tremorClearTimer);
+  document.querySelectorAll(".side-console").forEach(panel => {
+    panel.style.setProperty("--tremor-x", "0px");
+    panel.style.setProperty("--tremor-y", "0px");
+  });
+}
+
+function scheduleTremor() {
+  if (!tremorActive) return;
+  tremorTimer = setTimeout(() => {
+    document.querySelectorAll(".side-console").forEach(panel => {
+      const amount = 2 + Math.random() * 8;
+      panel.style.setProperty("--tremor-x", ((Math.random() * 2 - 1) * amount).toFixed(1) + "px");
+      panel.style.setProperty("--tremor-y", ((Math.random() * 2 - 1) * amount).toFixed(1) + "px");
+    });
+    tremorClearTimer = setTimeout(() => {
+      document.querySelectorAll(".side-console").forEach(panel => {
+        panel.style.setProperty("--tremor-x", "0px");
+        panel.style.setProperty("--tremor-y", "0px");
+      });
+    }, 90 + Math.random() * 130);
+    scheduleTremor();
+  }, 80 + Math.random() * 920);
+}
+
+function startTremor() {
+  stopTremor();
+  tremorActive = true;
+  scheduleTremor();
 }
 
 function transcript(speaker, delta) {
@@ -223,8 +261,10 @@ $("startButton").addEventListener("click", () => {
   $("endButton").disabled = false;
   environment.start(performance.now());
   live.start();
+  startTremor();
 });
 $("endButton").addEventListener("click", () => {
+  stopTremor();
   environment.stop();
   starship.cancelPending("conversation_ended");
   $("endButton").disabled = true;
@@ -267,9 +307,11 @@ for (let i = 0; i < 90; i++) {
   star.style.top = Math.random() * 100 + "%";
   const size = Math.random() < 0.1 ? 3 : 1 + Math.random();
   star.style.width = star.style.height = size + "px";
-  star.style.opacity = 0.15 + Math.random() * 0.55;
+  const bright = Math.random() < 0.2;
+  star.style.opacity = bright ? 0.82 + Math.random() * 0.18 : 0.25 + Math.random() * 0.55;
   star.style.animationDelay = -Math.random() * 7 + "s";
-  if (i % 8 === 0) star.className = "twinkle";
+  star.style.animationDuration = 2 + Math.random() * 7 + "s";
+  if (bright || Math.random() < 0.08) star.className = "twinkle";
   $("stars").append(star);
 }
 

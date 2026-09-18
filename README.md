@@ -44,9 +44,11 @@ Open [http://localhost:3000](http://localhost:3000) in Chrome and click **Start 
 
 ## The 3D cockpit
 
-[Three.js](https://github.com/mrdoob/three.js/) renders twelve box modules around a ring, connecting spokes, a central docking tube and stars. `src/world.js` exposes `World.render(starshipSnapshot)` and projects game state into the canvas. `Starship` owns physics and capture decisions; `Environment` owns the mission clock.
+[Three.js](https://github.com/mrdoob/three.js/) renders twelve box modules around a ring, connecting spokes, a central docking tube, stars, and the optional `src/blackhole.png` backdrop. `src/world.js` exposes `World.render(starshipSnapshot)` and projects game state into the canvas. `Starship` owns physics and capture decisions; `Environment` owns the mission clock.
 
-Rotation accelerates gradually at 18°/s². The camera rolls with the pilot's ship, making the stars rotate. At matching angular speeds the station appears stationary. The green circle is a docking collar two units ahead of the camera. Pilot arrows move along cockpit X/Y axes.
+Each mission gives the station a new target rotation between 40 and 60°/s. Rotation accelerates gradually at 18°/s². The camera rolls with the pilot's ship, making the stars rotate. At matching angular speeds the station appears stationary. The green circle is a docking collar two units ahead of the camera. Pilot arrows move along cockpit X/Y axes.
+
+Before **Start conversation**, the station rotation and star field are already alive as a visual standby scene. The voice session, mission countdown, energy drain, controls, and console tremor begin only after Start.
 
 Model tools `approach_station` and `brake_ship` engage persistent thrust and braking through the existing Node bridge. Their results confirm the mode was applied, not that the ship has stopped. Thrust accelerates at 0.6 units/s², capped at 1.8; braking decelerates at 1.2 units/s². Inspect actual velocity and stopping distance. Allow extra distance for voice/tool latency; there is no automatic braking.
 

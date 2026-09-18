@@ -9,6 +9,20 @@ export class World {
     this.renderer = new THREE.WebGLRenderer({ antialias: true });
     this.renderer.setPixelRatio(Math.min(devicePixelRatio, 2));
     container.append(this.renderer.domElement);
+    const textureLoader = new THREE.TextureLoader();
+    textureLoader.load('/blackhole.png', texture => {
+      texture.colorSpace = THREE.SRGBColorSpace;
+      const material = new THREE.SpriteMaterial({
+        map: texture, transparent: true, opacity: 0.84, depthWrite: false,
+      });
+      this.blackHole = new THREE.Sprite(material);
+      // Keep the atmosphere in the upper-left of the cockpit viewport rather
+      // than placing it on the central docking path.
+      this.blackHole.position.set(-11, 8, -45);
+      this.blackHole.scale.set(16, 16, 1);
+      this.blackHole.renderOrder = -2;
+      this.camera.add(this.blackHole);
+    }, undefined, error => console.warn('[Docking] Could not load blackhole.png', error));
     this.scene.add(new THREE.HemisphereLight(0xd5eaff, 0x33302a, 2));
     const light = new THREE.DirectionalLight(0xffeed4, 4);
     light.position.set(-8, 12, 15);
@@ -45,9 +59,10 @@ export class World {
     tube.position.z = -0.5;
     const lip = mesh(new THREE.TorusGeometry(0.65, 0.07, 10, 48), metal);
     lip.position.z = 1;
+    this.blinkMaterials = [];
     // Mostly faint pinpoints, with fewer medium and bright stars. Generate once
     // so the field remains stable as the cockpit rolls and approaches.
-    for (const [count, size, brightness] of [[1150, 0.25, 0.45], [300, 0.55, 0.7], [50, 1.1, 1]]) {
+    for (const [count, size, brightness] of [[1150, 0.28, 0.6], [300, 0.65, 0.95], [60, 1.25, 1.35]]) {
       const stars = new Float32Array(count * 3);
       const colors = new Float32Array(count * 3);
       for (let i = 0; i < stars.length; i += 3) {
@@ -56,7 +71,7 @@ export class World {
         const r = Math.sqrt(1 - z * z);
         const distance = 180 + Math.random() * 100;
         stars.set([distance * r * Math.cos(azimuth), distance * r * Math.sin(azimuth), distance * z], i);
-        const intensity = brightness * (0.55 + Math.random() * 0.45);
+        const intensity = brightness * (0.7 + Math.random() * 0.3);
         const warm = Math.random() < 0.25;
         colors.set([intensity * (warm ? 1 : 0.85), intensity * 0.93,
           intensity * (warm ? 0.78 : 1)], i);
@@ -64,8 +79,11 @@ export class World {
       const geometry = new THREE.BufferGeometry();
       geometry.setAttribute('position', new THREE.BufferAttribute(stars, 3));
       geometry.setAttribute('color', new THREE.BufferAttribute(colors, 3));
-      this.scene.add(new THREE.Points(geometry,
-        new THREE.PointsMaterial({ vertexColors: true, size })));
+      const material = new THREE.PointsMaterial({ vertexColors: true, size,
+        transparent: size > 0.5, opacity: size > 0.5 ? 0.8 : 1, depthWrite: false });
+      this.scene.add(new THREE.Points(geometry, material));
+      if (size > 0.5) this.blinkMaterials.push({ material,
+        phase: Math.random() * Math.PI * 2, speed: 1 + Math.random() * 2 });
     }
     // A physical guide at the cockpit nose, two units ahead of the camera.
     this.guide = new THREE.Mesh(new THREE.TorusGeometry(0.25, 0.006, 6, 64),
@@ -84,6 +102,10 @@ export class World {
   }
 
   render(ship) {
+    const time = performance.now() / 1000;
+    for (const star of this.blinkMaterials)
+      star.material.opacity = 0.35 + (Math.sin(time * star.speed + star.phase) + 1) * 0.325;
+    if (this.blackHole) this.blackHole.material.rotation = time * 0.008;
     const roll = THREE.MathUtils.degToRad(ship.angle);
     this.station.rotation.z = THREE.MathUtils.degToRad(ship.targetAngle);
     // Pilot nudges use cockpit axes even while the cockpit is rolling.

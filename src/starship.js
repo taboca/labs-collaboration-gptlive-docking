@@ -19,12 +19,15 @@ export class Starship {
 
   reset(now = 0) {
     this.cancelPending("reset");
+    const carriedTargetAngle = Number.isFinite(this.targetAngle) ? this.targetAngle : 0;
     Object.assign(this, {
-      energy: 100, idleDrainPerSecond: 0.15, targetSpeed: 42, speed: 0,
-      targetAngle: 0, angle: 0,
+      energy: 100, idleDrainPerSecond: 0.15,
+      targetSpeed: 40 + Math.random() * 20, speed: 0,
+      targetAngle: carriedTargetAngle, angle: 0,
       x: this.randomOffset(), y: this.randomOffset(),
       aligning: false, docked: false, measuredSpeed: null, now,
       requestedSpeed: 0, distance: 18, velocity: 0, motion: "coast",
+      lastTick: now === 0 ? null : now,
     });
   }
 
@@ -141,24 +144,28 @@ export class Starship {
 
   tick(now, elapsedSeconds) {
     this.now = now;
+    const deltaSeconds = elapsedSeconds > 0 ? elapsedSeconds
+      : this.lastTick === null ? 0 : Math.min(0.1, Math.max(0, now - this.lastTick) / 1000);
+    this.lastTick = now;
+    // The station rotates in the idle view. Mission systems below wait for running.
+    this.targetAngle += this.targetSpeed * deltaSeconds;
     if (!this.environment.allowsCommands) {
       this.cancelPending(this.environment.reason || "game_stopped");
       return;
     }
-    this.targetAngle += this.targetSpeed * elapsedSeconds;
     const wasMatched = this.speedMatched;
     this.speed += Math.sign(this.requestedSpeed - this.speed) *
-      Math.min(Math.abs(this.requestedSpeed - this.speed), elapsedSeconds * 18);
+      Math.min(Math.abs(this.requestedSpeed - this.speed), deltaSeconds * 18);
     if (!wasMatched && this.speedMatched) this.onEvent({ type: "rotation_matched" });
-    this.angle += this.speed * elapsedSeconds;
+    this.angle += this.speed * deltaSeconds;
     const before = this.velocity;
-    if (this.motion === "thrust") this.velocity = Math.min(1.8, this.velocity + elapsedSeconds * 0.6);
-    if (this.motion === "brake") this.velocity = Math.max(0, this.velocity - elapsedSeconds * 1.2);
-    this.distance -= (before + this.velocity) / 2 * elapsedSeconds;
+    if (this.motion === "thrust") this.velocity = Math.min(1.8, this.velocity + deltaSeconds * 0.6);
+    if (this.motion === "brake") this.velocity = Math.max(0, this.velocity - deltaSeconds * 1.2);
+    this.distance -= (before + this.velocity) / 2 * deltaSeconds;
     if (this.distance < -0.3 || (this.distance <= 0 && (!this.aligned || this.velocity > 0.15))) {
       this.environment.fail("unsafe_contact");
     }
-    this.energy = Math.max(0, this.energy - elapsedSeconds * this.idleDrainPerSecond);
+    this.energy = Math.max(0, this.energy - deltaSeconds * this.idleDrainPerSecond);
     this.environment.updateFromStarship(this.snapshot());
     if (!this.environment.allowsCommands) {
       this.cancelPending(this.environment.reason);
