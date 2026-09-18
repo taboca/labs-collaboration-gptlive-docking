@@ -15,13 +15,13 @@ export class World {
       const material = new THREE.SpriteMaterial({
         map: texture, transparent: true, opacity: 0.84, depthWrite: false,
       });
-      this.blackHole = new THREE.Sprite(material);
-      // Keep the atmosphere in the upper-left of the cockpit viewport rather
-      // than placing it on the central docking path.
+      // Keep the atmosphere in the upper-left of the world background rather
+      // than placing it on the central docking path. It must live in world
+      // space with the stars, not on the camera, so cockpit roll affects both.
+      this.blackHole = new THREE.Mesh(new THREE.PlaneGeometry(16, 16), material);
       this.blackHole.position.set(-11, 8, -45);
-      this.blackHole.scale.set(16, 16, 1);
       this.blackHole.renderOrder = -2;
-      this.camera.add(this.blackHole);
+      this.scene.add(this.blackHole);
     }, undefined, error => console.warn('[Docking] Could not load blackhole.png', error));
     this.scene.add(new THREE.HemisphereLight(0xd5eaff, 0x33302a, 2));
     const light = new THREE.DirectionalLight(0xffeed4, 4);
@@ -105,7 +105,6 @@ export class World {
     const time = performance.now() / 1000;
     for (const star of this.blinkMaterials)
       star.material.opacity = 0.35 + (Math.sin(time * star.speed + star.phase) + 1) * 0.325;
-    if (this.blackHole) this.blackHole.material.rotation = time * 0.008;
     const roll = THREE.MathUtils.degToRad(ship.angle);
     this.station.rotation.z = THREE.MathUtils.degToRad(ship.targetAngle);
     // Pilot nudges use cockpit axes even while the cockpit is rolling.
