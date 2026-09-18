@@ -1,5 +1,7 @@
 # GPT-Live: Collaborating with Voice and the Starship Docking Scene
 
+![Starship docking scene](doc_starship.png)
+
 A small teaching demo for exploring GPT-Live over WebRTC. A human pilot and a voice copilot share one browser-owned Starship:
 
 - the pilot sets rotation speed and aligns the ship by hand;
