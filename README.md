@@ -184,17 +184,3 @@ The reference canvas uses `session.thinking.append` for silent context. Selected
 For delegated tool completion, `response.item.create` adds the `function_call_output`; `response.create` then continues the delegated Responses work. A local browser acknowledgement means Node sent those events. It does not guarantee that Responses accepted them or that GPT-Live has already spoken.
 
 These choices follow the [OpenAI Live API reference](https://developers.openai.com/api/reference/typescript/resources/live), the [GPT-Live delegation guide](https://developers.openai.com/api/docs/guides/live-delegation), and the [WebRTC guide](https://developers.openai.com/api/docs/guides/voice-webrtc?api=live).
-
-## Publishing later
-
-No Git repository was initialized and no commit or push was made during this cleanup. When ready, review the staged files and use:
-
-```bash
-git init
-git add .
-git diff --cached --stat
-git commit -m "Initial GPT-Live docking demo"
-git branch -M main
-git remote add origin git@github.com:taboca/labs-collaboration-gptlive-docking.git
-git push -u origin main
-```
