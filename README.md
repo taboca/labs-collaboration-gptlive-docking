@@ -104,7 +104,7 @@ audio travels directly between the browser and OpenAI.
 OpenAI event formats and call IDs stay in the integration service. Starship and
 Environment receive ordinary application commands and return ordinary results.
 
-## Follow a command
+## Walkthrough case
 
 When the pilot says “measure the rotation”:
 
