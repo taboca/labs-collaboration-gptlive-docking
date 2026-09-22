@@ -154,43 +154,13 @@ or tab disconnection cleans up its services and applets, including audio tracks,
 animation, radio, and Three.js resources. A win or failure leaves the final
 cockpit visible until the conversation ends. Reloading creates a fresh runtime.
 
-## Read and verify
-
-A useful reading order is the [registry](src/appletRegistry.js), an
-[applet definition](src/applets/app/child/mission/child/starship/index.js),
-[Mission](src/serviceMission.js), then the Starship rules and clients linked above.
-The [browser bootstrap](public/bootstrap.js) connects transport to the Inner
-Browsing navigator, which mounts and updates browser companions.
-
-Inner Browsing is available at
-[github.com/taboca/inner-browsing](https://github.com/taboca/inner-browsing).
-
-```sh
-npm test
-```
-
-Application tests cover mission lifetime and isolation, command validation,
-server-owned simulation and timing, docking rules, and mocked OpenAI tool-result
-handling. These checks do not require an API key.
-
-For the optional browser smoke test, run each command in a separate terminal:
-
-```sh
-node test/browser-fixture.mjs
-chromium --headless --remote-debugging-port=9337 \
-  --user-data-dir=/tmp/starship-browser-profile about:blank
-node test/browser-smoke.mjs
-```
-
-The fixture mocks WebRTC and OpenAI while exercising the real DOM, WebGL,
-application transport, and Inner Browsing runtime. It saves screenshots in
-`/tmp`. To check actual voice behavior, run the normal server and try the docking
-sequence above, including ending a mission during connection startup.
-
-## OpenAI references
+## References
 
 These guides explain the protocols represented by the Channel applet and the
 server integration:
+
+- [Inner Browsing](https://github.com/taboca/inner-browsing) — the applet runtime
+  used to compose the application.
 
 1. [Getting started with GPT-Live](https://developers.openai.com/api/docs/guides/live) — overall Live voice and backend delegation architecture.
 2. [GPT-Live WebRTC guide](https://developers.openai.com/api/docs/guides/voice-webrtc?api=live) — microphone, peer connection, SDP offer and answer, and session startup.
