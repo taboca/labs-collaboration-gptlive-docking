@@ -1,7 +1,7 @@
 import OpenAI from 'openai';
 import { SidebandWS } from 'openai/resources/live/sideband/ws';
 import { randomUUID } from 'node:crypto';
-import { liveSession } from './serviceGptLiveSession.js';
+import { liveSession } from './gptLiveSession.js';
 const commands = Object.freeze({ inspect_starship: 'inspect', analyze_rotation_speed: 'analyzeRotationSpeed',
   approach_station: 'approach', brake_ship: 'brake', dock_objects: 'dock' });
 

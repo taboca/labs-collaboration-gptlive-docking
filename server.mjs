@@ -9,8 +9,8 @@ import { createAppletRuntime, createRuntimeProtocol } from '@taboca/inner-browsi
 import { browserRuntimeDirectory } from '@taboca/inner-browsing/node';
 import { createStateTreeStore } from '@taboca/inner-browsing/node';
 import { registryFor } from './src/appletRegistry.js';
-import { Mission } from './src/serviceMission.js';
-import { OpenAILiveService } from './src/serviceGptLive.js';
+import { Mission } from './src/services/mission.js';
+import { OpenAILiveService } from './src/services/gptLive.js';
 
 // The server owns the connection-scoped Inner Browsing application session.
 // Applet server modules are loaded by this runtime after it has been assembled.

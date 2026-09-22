@@ -25,7 +25,7 @@ Open [localhost:3000](http://localhost:3000), click **Start mission**, and allow
 microphone access. The default mission lasts 60 seconds, starting when the voice
 channel reports ready. Set `missionDurationMs` in your configuration to change it.
 Model names, instructions, and tool schemas live in
-[serviceGptLiveSession.js](src/serviceGptLiveSession.js).
+[services/gptLiveSession.js](src/services/gptLiveSession.js).
 
 To try a docking sequence:
 
@@ -71,23 +71,27 @@ applet `app/mission/world`. World is a sibling of Environment and Starship.
 services for each browser connection. Services are passed into the applets so
 they work with the same mission objects. Each tab has its own mission.
 
+The application services are grouped together in [src/services](src/services):
+`mission.js` owns the game flow, `gptLive.js` owns the OpenAI connection, and
+`gptLiveSession.js` holds the Live and Responses session configuration.
+
 ## Where responsibilities live
 
 | Location | Responsibility |
 | --- | --- |
 | [server.mjs](server.mjs) | Serve browser modules, assemble the runtime, and handle the application WebSocket. Applet entry-module routes come from the registry; helper modules have explicit routes. |
-| [serviceMission.js](src/serviceMission.js) | Create the game domains, coordinate commands and mission lifetime, advance simulation, retain recent tasks, and publish applet state. |
+| [services/mission.js](src/services/mission.js) | Create the game domains, coordinate commands and mission lifetime, advance simulation, retain recent tasks, and publish applet state. |
 | [Starship server](src/applets/app/child/mission/child/starship/server/index.js) | Command permissions and costs, energy, rotation, alignment, thrust, braking, and docking checks. |
 | [Environment server](src/applets/app/child/mission/child/environment/server/index.js) | Countdown and running, won, failed, and stopped states. Starship supplies energy and docking outcomes. |
 | [Channel client](src/applets/app/child/mission/child/channel/client/index.js) and [LiveClient](src/applets/app/child/mission/child/channel/client/live-client.js) | Microphone, WebRTC, audio, transcript, connection status, and last robot result. |
-| [serviceGptLive.js](src/serviceGptLive.js) | Create the OpenAI session, attach its sideband, map delegated tools to application commands, and return results. |
+| [services/gptLive.js](src/services/gptLive.js) | Create the OpenAI session, attach its sideband, map delegated tools to application commands, and return results. |
 | [Starship client](src/applets/app/child/mission/child/starship/client/index.js) and [Environment client](src/applets/app/child/mission/child/environment/client/index.js) | Human controls and the clock, energy, and outcome display. |
 | [3D renderer](src/applets/app/child/mission/child/3dworld/client/world.js) | Three.js station, camera, guide, stars, background, animation, and GPU cleanup. |
 
 The small game domains are classes named `Domain` inside their owning applet’s
 `server/index.js`. Mission constructs those objects; applet server companions
-expose them and adapt operations. The application services live directly in
-`src/` because the main server constructs them before loading the applets.
+expose them and adapt operations. The main server constructs the services in
+`src/services/` before loading the applets.
 
 ## Three connections, three jobs
 

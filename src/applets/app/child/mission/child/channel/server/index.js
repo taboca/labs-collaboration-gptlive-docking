@@ -1,7 +1,7 @@
 export function createServerApplet({ mission }) {
   return {
     init() {
-      // Channel owns the application-facing lifecycle; GPT Live details stay in serviceGptLive.js.
+      // Channel owns the application-facing lifecycle; GPT Live details stay in services/gptLive.js.
       return { mission };
     },
   };
