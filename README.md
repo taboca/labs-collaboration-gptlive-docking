@@ -1,4 +1,4 @@
-# Starship Docking — learning Inner Browsing with GPT-Live
+# Demo of GPT-Live: collaborative user and robot in a 3D game world
 
 A human pilot and a voice copilot dock a Starship together. The human sets rotation
 and alignment; the robot inspects the ship, measures rotation, applies thrust,
