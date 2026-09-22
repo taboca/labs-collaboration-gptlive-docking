@@ -1,207 +1,314 @@
-# GPT-Live: Collaborating with Voice and the Starship Docking Scene
+# Starship Docking — learning Inner Browsing with GPT-Live
 
-![Starship docking scene](doc_starship.png)
+A human pilot and a voice copilot share one Starship. The human sets rotation and
+aligns the ship; the robot inspects, measures the station, applies thrust, brakes,
+and attempts docking. Inner Browsing composes the running application.
 
-▶️ [Watch the demo on YouTube](https://www.youtube.com/watch?v=uiRx9m6eeXY)
+This is the refactored demo. The original, including its repository and local
+configuration, is preserved in `../demo-gpt-live-startship-docking_legacy/`.
+The new directory corrects the original `startship` spelling to `starship`.
 
-A small teaching demo for exploring GPT-Live over WebRTC. A human pilot and a voice copilot share one browser-owned Starship:
+## Run
 
-- the pilot sets rotation speed and aligns the ship by hand;
-- the copilot can inspect mission status, analyze the target, and request docking;
-- the browser owns the actual animation, energy, time, and geometry;
-- a failed docking attempt spends energy and time, but can be retried;
-- GPT-Live receives the browser result and explains it by voice.
+Use Node **22.6 or newer** (the OpenAI SDK requires Node 22):
 
-This is a local learning prototype, not a production architecture.
-
-## Run locally
-
-Use Node.js 22.6 or later:
-
-```bash
-nvm install
+```sh
 nvm use
 npm install
+# Only if config.json does not already exist:
 cp -n config.example.json config.json
-```
-
-Edit `config.json` and set `openaiApiKey`, then run:
-
-```bash
 npm start
 ```
 
-Open [http://localhost:3000](http://localhost:3000) in Chrome and click **Start conversation**. The API key remains server-side and `config.json` is ignored by Git.
+Set `openaiApiKey` in the ignored `config.json`, or set `OPENAI_API_KEY` in your
+shell. Existing local configuration was copied during this refactor. Never put a
+key in browser code. Open `http://localhost:3000`, start a mission, and allow the
+microphone. The configured models remain `gpt-live-1` and `gpt-5.6-terra`.
 
-## Fly the mission
+The server binds to loopback by default. This remains a local demonstration:
+actor checks teach application permissions, and the server owns the mission state.
+The browser is a renderer and human input surface. A disconnected tab ends its
+mission; reload starts with a new runtime. There is no resume/replay of a previous mission.
 
-1. Start the conversation and grant microphone access. The 60-second mission begins immediately.
-2. Say **“Analyze the rotation speed.”**
-3. Enter the reported value in **Set rotation speed**.
-4. Click **Begin alignment** and use the controls or arrow keys to align X/Y.
-5. Ask **“How much time and energy remain?”**, **“What is our angle?”**, or **“Are we aligned?”**.
-6. Ask **“Approach the station.”** Watch distance, speed and stopping distance. Ask **“Brake”** early, allowing for voice latency.
-7. Near the tube, use short thrust/brake corrections. Ask **“Lock dock”** when aligned, rotation matched, distance between −0.3 and 0.3 and speed at most 0.15. Failed locking costs 12 energy and takes time.
-8. Time expiration, zero energy or unsafe contact ends the mission. Live is instructed to say, “See you on the other side.”
+## Start with the application tree
 
-## The 3D cockpit
-
-[Three.js](https://github.com/mrdoob/three.js/) renders twelve box modules around a ring, connecting spokes, a central docking tube, stars, and the optional `src/blackhole.png` backdrop. `src/world.js` exposes `World.render(starshipSnapshot)` and projects game state into the canvas. `Starship` owns physics and capture decisions; `Environment` owns the mission clock.
-
-Each mission gives the station a new target rotation between 40 and 60°/s. Rotation accelerates gradually at 18°/s². The camera rolls with the pilot's ship, making the stars rotate. At matching angular speeds the station appears stationary. The green circle is a docking collar two units ahead of the camera. Pilot arrows move along cockpit X/Y axes.
-
-Before **Start conversation**, the station rotation and star field are already alive as a visual standby scene. The voice session, mission countdown, energy drain, controls, and console tremor begin only after Start.
-
-Model tools `approach_station` and `brake_ship` engage persistent thrust and braking through the existing Node bridge. Their results confirm the mode was applied, not that the ship has stopped. Thrust accelerates at 0.6 units/s², capped at 1.8; braking decelerates at 1.2 units/s². Inspect actual velocity and stopping distance. Allow extra distance for voice/tool latency; there is no automatic braking.
-
-The collar radius is 0.25 and the port radius is 0.65. The whole collar must fit inside the port. Locking checks alignment, matched rotation, proximity and low speed both at request and after the lock delay. Circular docking does not require matched angular phase. Fast or off-center contact, or entry deeper than 0.3 units, fails the mission. Distances are illustrative scene units.
-
-Run `npm install` and restart Node after updating. Three.js is served locally and requires WebGL2. The screenshot above shows the earlier 2D version.
-
-## Responsibility zones
-
-The interface frames the 3D scene with two independently scrolling consoles, tilted inward by 7° on desktop. The left uses green metallic cards for transcription, mission time, energy, analysis, thrust/braking, and docking. The right uses gray metallic cards for conversation controls, pilot rotation/alignment, radio, and expandable reference/developer information. Smaller screens flatten or stack the consoles.
-
-Status inspection shares the Analysis card, and forward thrust and braking share one Thrust card. These are visual groupings; the delegated tools and actor permissions remain distinct.
-
-| Zone | Responsibility |
-| --- | --- |
-| **GPT-Live** | Listens, speaks, interprets the pilot, and decides when delegated work is needed. |
-| **Responses** | Receives delegated work, selects `inspect_starship`, `analyze_rotation_speed`, or `dock_objects`, and interprets the returned result. |
-| **Node server** | Keeps the API key private, creates the Live WebRTC session, attaches the trusted sideband, routes delegated calls, and returns browser results to Responses. |
-| **Starship** | Owns commands, actor permissions, energy, speed, angles, position, and docking checks. |
-| **Environment** | Owns elapsed mission time and decides what energy depletion, time expiration, or successful docking means for the mission. |
-| **Browser UI** | Renders the scene, sends user commands to Starship, displays gauges, and carries the WebRTC audio/events connection. |
-
-The important domain rule is:
+These are real canonical applets, with server and browser companions. The logical runtime tree is:
 
 ```text
-Starship owns its energy and actions.
-Environment owns the conditions under which those actions can continue.
+app                                      Start / End mission
+└── mission                             Lifetime of one mission
+    ├── channel                          Voice, media and session operations
+    ├── starship                         Human commands and robot readouts
+    ├── environment                      Mission clock and terminal state
+    └── world                             Three.js rendering
 ```
 
-User commands run directly in the browser:
+On disk, each applet separates its own companions from its children. The two
+connection-scoped application services live at `src/`, because the main server
+constructs them before it assembles the Inner Browsing runtime:
 
 ```text
-USER → Starship.setRotationSpeed(value)
-USER → Starship.beginAlignment()
-USER → Starship.nudge(x, y)
+src/
+├── serviceMission.js             application mission service
+├── serviceGptLive.js             OpenAI Live connection service
+├── serviceGptLiveSession.js      Live and Responses session configuration
+└── applets/app/
+├── index.js                      applet definition
+├── client/
+├── server/
+└── child/mission/
+    ├── index.js
+    ├── client/
+    ├── server/
+    │   └── index.js              lifecycle and operations adapter
+    └── child/
+        ├── channel/
+        │   ├── index.js
+        │   ├── client/           WebRTC and voice UI
+        │   └── server/
+        │       └── index.js      channel operations adapter
+        ├── starship/
+        │   ├── index.js
+        │   ├── client/           pilot console and robot readouts
+        │   └── server/
+        │       └── index.js      Domain, lifecycle, and operations
+        ├── environment/
+        │   ├── index.js          applet definition
+        │   ├── client/           renders the server state
+        │   └── server/
+        │       └── index.js      Domain, lifecycle, and operations
+        └── 3dworld/              index.js, client/, server/
 ```
 
-Model commands use the Responses delegation path:
+`child/` is a filesystem convention, not an extra applet. Each applet’s root `index.js` maps
+logical identity `app/mission/world` to directory
+`app/child/mission/child/3dworld`. Runtime operations and
+parent/anchor relationships continue to use the logical names.
 
-```text
-GPT-Live → Responses → Node sideband → browser → Starship
-                                      ↑
-                       result / measurements
-                                      │
-GPT-Live ← Responses ← Node: response.item.create + response.create
+[The registry](src/appletRegistry.js) assembles the definitions exported by each
+applet’s root `index.js` and checks their browser files. Each definition owns its
+logical path, accepted child anchors, companion loading and service injection. The
+runtime assembly in [server.mjs](server.mjs) creates a separate registry, state store
+and runtime for each browser connection.
+It uses the framework's own state-tree store in a disposable temporary directory.
+No application singleton shares commands between tabs.
+
+There is no separate `domain/` or `integrations/` directory. Game rules live with
+their owning applet: Starship in `starship/server/index.js`, environment rules
+in Environment's `server/index.js`; mission coordination lives in `src/serviceMission.js`;
+OpenAI integration lives in `src/serviceGptLive.js`.
+The server assembles the connection-scoped runtime and injects its Mission service.
+It constructs the Channel provider once per connection, so tests can still
+substitute it without calling OpenAI.
+
+The main server constructs Mission and OpenAILiveService once per browser connection.
+Applet server entry points receive these services through registry injection and
+adapt lifecycle and operation calls. Session instructions and tool schemas live
+in `src/serviceGptLiveSession.js`.
+
+The Starship browser companion imports the command table from
+`starship/server/index.js`. Environment and World render the state snapshots
+published by the server. Only that dependency-free command entry point and the
+browser companions are served publicly; root definitions and server providers remain private.
+
+
+`Start mission` loads the Mission subtree. Each browser companion materializes
+through Inner Browsing's navigator. Channel connects asynchronously, so microphone
+or SDP work does not block the other applets from mounting. The countdown starts
+when Channel reports `Ready`. `End mission`, channel closure, or browser transport
+closure disposes the subtree. Winning or failing updates the server state and the
+browser renders the final cockpit until the conversation ends.
+
+The Environment and Starship server companions own the simulation state and rules.
+Their browser companions render snapshots and send human commands. The 3D World
+does not decide speed, alignment, approach, or docking.
+
+## Zones of responsibility
+
+| Zone | Read here | Owns |
+| --- | --- | --- |
+| HTTP and runtime transport | [server.mjs](server.mjs) | Static browser assets, origin check, one WebSocket adapter, connection lifetime |
+| Framework composition | [src/appletRegistry.js](src/appletRegistry.js), [server.mjs](server.mjs) | Applet definitions, injected services, native load/update/destroy |
+| Application business flow | [Mission service](src/serviceMission.js) | Mission scope, authoritative services, actor validation, task history, and state publication |
+| Ship business rules | [Starship server](src/applets/app/child/mission/child/starship/server/index.js) | Shared capability table, energy costs, rotation, approach, braking, alignment, docking conditions |
+| Environment rules | [Environment server](src/applets/app/child/mission/child/environment/server/index.js) | Clock, running/won/failed/stopped transitions, terminal conditions |
+| Main OpenAI channel | [Channel client](src/applets/app/child/mission/child/channel/client/index.js), [LiveClient](src/applets/app/child/mission/child/channel/client/live-client.js) | Microphone, WebRTC, data-channel events, captions, audio, reference context |
+| OpenAI server integration | [Channel server](src/applets/app/child/mission/child/channel/server/index.js), [provider](src/serviceGptLive.js), [session](src/serviceGptLiveSession.js) | Connection operations, Live creation, sideband, Responses tools, OpenAI envelopes and call correlation |
+| Human and robot controls | [Starship client](src/applets/app/child/mission/child/starship/client/index.js), [server](src/applets/app/child/mission/child/starship/server/index.js) | Human input operations, availability feedback, and state rendering |
+| Browser environment | [Environment client](src/applets/app/child/mission/child/environment/client/index.js) | Renders the server-owned clock, phase, and energy snapshot |
+| 3D world | [World companion](src/applets/app/child/mission/child/3dworld/client/index.js), [renderer](src/applets/app/child/mission/child/3dworld/client/world.js) | Camera, station, guide, stars, black hole, resize and GPU cleanup |
+
+The Mission service creates one Environment service and one Starship service for
+each browser connection. The applet server companions expose those same objects,
+so the ownership and validation boundary is visible without extra indirection.
+They contain no OpenAI or browser imports. World renders ship snapshots and never
+decides whether docking succeeded.
+
+## The three connections
+
+```mermaid
+flowchart LR
+  Browser[Channel browser companion] <-->|WebRTC: microphone, audio, Live events| Live[OpenAI Live session]
+  Node[OpenAI integration service] <-->|Trusted sideband WebSocket| Live
+  Runtime[Inner Browsing server runtime] <-->|One application WebSocket: operations and snapshots| Navigator[Inner Browsing browser navigator]
+  Node -->|Application command / result| Mission[Mission service]
+  Mission --> Runtime
 ```
 
-The actor value (`"user"` or `"model"`) expresses the teaching boundary in code. It is not an authentication system.
+**Main channel:** `LiveClient` obtains media, creates an SDP offer and calls the
+Channel's `Connect` applet operation. The server integration creates the Live
+session and returns its SDP answer through that same operation. Browser audio
+goes directly to OpenAI; Node does not proxy it. HTTP WebRTC creation starts the
+session, so neither connection sends `session.start` again.
 
-## Is Node still necessary?
+**Sideband:** the server attaches `SidebandWS` to the returned Live session.
+Nested `response.output_item.done` function calls are translated from OpenAI tool
+names into ordinary application commands. Deduplication and `call_id` stay here.
+The handler closure keeps each external call associated with its eventual
+application result. This demo does not need a separate response/delegation index
+because each awaited result stays in that call's handler and continuation uses
+the attached session. Destroying a session invalidates its outstanding handlers.
 
-Yes, for this version, but Node does not carry the live audio conversation.
+**Application connection:** `/runtime` adapts the transport-neutral Inner Browsing
+protocol to the existing `ws` dependency. It carries `applet.operation`, operation
+replies and native `navigator.snapshot` envelopes. There is no second browser
+command bridge, `/api/session` endpoint, or browser `<tool>.request` protocol.
+The browser never sends OpenAI tool-call IDs back to Node.
 
-The direct audio path is:
+OpenAI-specific event decoding in Channel is limited to communication UI such as
+captions and session status. Application command execution lives elsewhere.
 
-```text
-Browser microphone ⇄ WebRTC ⇄ GPT-Live audio
-Browser oai-events ⇄ WebRTC data channel ⇄ GPT-Live events
+The integration preserves the official [Live delegation and tools](https://developers.openai.com/api/docs/guides/live-delegation)
+flow: execute the application capability, return `function_call_output` with
+`response.item.create`, then continue using `response.create`. Sending an output
+is not proof of spoken acknowledgement from the model.
+
+## Follow one robot command
+
+Suppose the pilot says “measure the station's rotation.”
+
+1. OpenAI delegates a function call to the server sideband.
+2. The integration maps `analyze_rotation_speed` to `analyzeRotationSpeed` and
+   invokes the Mission service with the fixed actor `model`.
+3. Mission reads the authoritative Starship service, records the completed task,
+   and publishes the new applet state.
+4. Inner Browsing sends the snapshot to the browser. Controls, Environment, and
+   World render the returned state; none of them calculates the result.
+5. The integration sends the application result to OpenAI and continues the
+   conversation.
+
+No OpenAI `call_id`, `response_id`, `delegation_id`, or function-call envelope
+crosses into Starship or Environment. The task list keeps the most recent 20
+application results; the browser receives state snapshots after each change.
+
+## Follow one human command
+
+The rotation form sends `Human command` to Starship. Its server operations
+companion fixes the actor to `user`, validates the command, updates the Starship
+service, and publishes the resulting state. A request cannot become a robot
+command by supplying its own `actor` field.
+
+| Actor | Capabilities | Energy |
+| --- | --- | --- |
+| Human (`user`) | Set rotation, begin alignment, nudge X/Y | 4, 2, 1 |
+| Robot (`model`) | Inspect, measure rotation, thrust, brake, dock | 0, 6, 3, 2, 12 |
+
+The table is defined in `src/applets/app/child/mission/child/starship/server/index.js`; the UI displays costs from it.
+Inspect is read-only and remains available after gameplay wins or fails, while the
+mission subtree is still open. Other actions require a running mission and
+sufficient energy.
+
+Docking still requires matched rotation, the guide within the port, distance
+between -0.3 and 0.3, and velocity no greater than 0.15. An allowed attempt costs
+energy even when it misses. Thrust persists until braking; unsafe
+contact, time expiry or exhausted energy fails the mission.
+
+## Retained state and browser rendering
+
+Retained applet state contains mission identity/phase, Channel status, and the
+bounded task history. Tasks record application results; they are not a disguise
+for every incoming Live event.
+
+There are **no projections** here. Inner Browsing projections represent separately
+identified, placed applet instances. A tool call or transcript delta is not such
+an instance. The 3D “view” is a canonical child applet, not a framework projection.
+
+The server retains the Environment and Starship domains. Browser applets render
+the latest state delivered through Inner Browsing updates. World may interpolate
+that snapshot between updates for smooth rotation and approach motion, but it is
+visual only; it does not own physics, telemetry, commands, or docking decisions.
+
+## Lifecycle and failure handling
+
+- Mission teardown closes the sideband and destroys all descendant applets.
+  OpenAI deduplication applies for the lifetime of its session.
+- Browser cleanup stops media tracks, closes the peer/data channel, cancels
+  startup/ICE timers, stops the radio, disconnects resize observation, and
+  disposes Three.js geometry/materials/textures.
+- The runtime operation queue carries state snapshots and direct application
+  operations; there is no browser task completion loop.
+- Framework lifecycle callbacks do not await another composer mutation from
+  inside its mutation queue. Game destruction performs synchronous service cleanup.
+- Runtime disconnection destroys browser applets. A reload creates a new mission;
+  it does not replay old ship commands or reattach to an old OpenAI session.
+
+## Framework provenance and learning path
+
+`vendor/inner-browsing` is an unchanged copy of the complete package from
+`labs-pattern-appcomposer-020-inner-browsing/packages/inner-browsing`, referenced
+as a local npm dependency. It includes its original license, source and tests;
+there is no forked runtime implementation. This makes the demo installable
+without a dependency on an absolute path to the meetings workspace. See
+[vendor/README.md](vendor/README.md) for provenance.
+
+The Meetingbro example informed service injection and the separation of applet
+operations from business services. The smaller demo does not need its projection
+coordinator, mediator catalog or durable business repositories.
+
+A useful reading order is: registry → applet root definitions → Mission service
+→ Starship operations → Environment client → World → Channel
+and the GPT Live service. Finally read the
+small [browser bootstrap](public/bootstrap.js), whose job is just transport and
+framework reconciliation. There is no replacement monolithic browser `app.js`.
+
+## Verification
+
+```sh
+npm test
+node --test vendor/inner-browsing/test/*.test.js
 ```
 
-Node is still used for two specific reasons:
+The six focused tests cover actual applet load/destroy, actor and argument
+validation, direct robot reads, authoritative domain measurement/docking, mission
+isolation, and teardown. The integration tests cover OpenAI result-before-continuation.
+The vendored framework suite also passes.
 
-1. **Session bootstrap and secret protection.** The browser sends its SDP offer to `POST /api/session`; Node calls `client.live.create` with the project key and returns the SDP answer. The key never enters browser code.
-2. **Responses delegation coordination.** The current design deliberately uses a server-owned Responses backend. Node attaches `SidebandWS`, receives the delegated function call, sends a local request over `/ws` to the browser, and sends the browser’s verified result back with `response.item.create` followed by `response.create`.
+The browser smoke test exercises real Chromium, DOM, WebGL, WebSocket transport
+and Inner Browsing, with only WebRTC and the external Live service mocked:
 
-Node does not approve every mouse movement, speed entry, or alignment nudge. Those are deterministic Starship operations in the browser. Node handles delegated operation requests and results; ordinary client context goes directly over the Live data channel.
-
-## Could Node be reduced further?
-
-Yes, if the delegation mode changes.
-
-With **client delegation**, GPT-Live can emit application delegation events to the browser, and the browser can perform Starship commands directly through the `oai-events` channel. That could remove the Node `/ws` bridge and the Node sideband for the model commands. A server endpoint would still normally be needed to create the WebRTC session without exposing the project key, unless the application uses another server-issued credential flow.
-
-This project keeps the Node sideband because it demonstrates a different lesson: GPT-Live remains the conversational model while Responses performs delegated backend work and waits for a browser result. Removing that path would make the app smaller, but it would change the delegation experiment.
-
-## Commands and costs
-
-| Command | Actor | Cost |
-| --- | --- | ---: |
-| `Starship.inspect("model")` | MODEL | 0 |
-| `Starship.analyzeRotationSpeed("model")` | MODEL | 6 |
-| `Starship.dock("model")` | MODEL | 12 |
-| `Starship.approach("model")` | MODEL | 3 |
-| `Starship.brake("model")` | MODEL | 2 |
-| `Starship.setRotationSpeed(value, "user")` | USER | 4 |
-| `Starship.beginAlignment("user")` | USER | 2 |
-| `Starship.nudge(x, y, "user")` | USER | 1 |
-
-The Starship also consumes 0.15 energy per second. Costs are defined once in `src/starship.js` and displayed by the UI from that same table. Rejected commands do not spend command energy.
-
-## Testing the mission
-
-Testing this prototype means running the mission manually in Chrome, speaking to GPT-Live, watching the scene, and reading the event and transcript areas. The purpose is to observe how the two responsibility zones cooperate while the browser remains the authority for the game state.
-
-### The mission test
-
-Start the conversation and grant microphone access. The mission clock begins immediately. Then exercise the complete path:
-
-1. Ask GPT-Live to analyze the rotation speed.
-2. Listen for the measured value and enter it in the user speed form.
-3. Wait for rotation to match, begin alignment, and steer the green collar toward the tube.
-4. Ask for current time, energy, angle, or alignment when you want to inspect the live state.
-5. Ask for thrust and braking; inspect actual approach speed and stopping distance.
-6. Ask to lock in the capture zone. Failed locks spend resources without moving the ship. Unsafe physical contact fails the mission.
-7. Complete a successful dock, or let time and energy run out to observe the terminal path.
-
-### What the user can do
-
-The user is the pilot. The user can set the rotation speed, begin alignment, nudge the ship in X/Y, inspect the visible gauges, and choose when to ask for docking. These commands happen in the browser and are checked by the Starship object.
-
-The user cannot directly execute the model-owned analysis or docking tool panels. The command cards label this difference with `USER` and `MODEL`, making the actor boundary visible during the test.
-
-### What the model can do
-
-GPT-Live is the voice copilot. It can ask Responses to inspect the current Starship and Environment state, measure the target rotation, or attempt docking. It can explain results and suggest the next action.
-
-The model cannot set the user's speed form or move the ship's alignment. It also should not claim a speed, alignment, docking success, remaining energy, or remaining time until it receives a current browser result. A failed dock is a resource-consuming attempt rather than automatically a mission failure.
-
-### Transcript area and an unexpected audio observation
-
-The left communication panel contains the transcript area. It displays input transcript deltas from the microphone and output transcript deltas from GPT-Live, along with the activity indicator above it. The transcript is useful evidence during testing, while the event log shows the lower-level Live, delegation, and bridge events.
-
-![Transcript area showing an unexpected audio observation](doc_unexpected_image.png)
-
-During exploratory testing, an unexpected burp was picked up by the microphone. The transcript shows the practical behavior clearly: GPT-Live hears the microphone stream, attempts to transcribe whatever audio crosses the input, and may interpret an accidental sound as speech or as a conversational cue. The model is not receiving a clean semantic text command from the user; it is receiving live audio that can include breathing, room noise, laughter, a burp, or other incidental sounds.
-
-That observation is useful for this prototype. It shows why the transcript should be treated as an observation of the audio interaction rather than a perfect record of user intent. It also shows why the model may respond to something the user did not intend as a command. Repeat the test with a deliberate phrase after the unexpected sound and compare the transcript, event log, and spoken response.
-
-The screenshot is referenced by the filename `doc_unexpected_image.png` at the project root. Add that image before publishing the repository if it is not already present.
-
-## Files
-
-```text
-server.mjs             Live session, tools, API key, sideband and /ws bridge
-src/environment.js     Mission clock and terminal conditions
-src/starship.js        Commands, actors, costs, energy and geometry
-src/world.js           Three.js station, stars, cockpit camera and green collar
-src/live-client.js     WebRTC bootstrap, audio, data channel and browser bridge
-src/app.js             Connects domain events, transport and UI
-src/index.html         Communications, scene and command console
-src/styles.css         Star field and spacecraft visual system
-config.example.json    Safe configuration template
-config.json            Local secret configuration; ignored by Git
+```sh
+node test/browser-fixture.mjs
+# In another terminal, launch your Chromium binary:
+chromium --headless --remote-debugging-port=9337 \
+  --user-data-dir=/tmp/starship-browser-profile about:blank
+# Then:
+node test/browser-smoke.mjs
 ```
 
-## Protocol details
+It verifies robot measurement/inspection, human speed/alignment/nudges, mobile
+width, resource teardown, a second mission, denied microphone access and ending during microphone acquisition. It saves screenshots in `/tmp`.
+The fixture never loads `config.json` or sends an OpenAI request.
 
-HTTP WebRTC creation starts the Live session. The browser waits for `session.started` and sends no additional `session.start`. When ending, it sends `session.close` and waits for `session.closed`.
+A real microphone/OpenAI call has **not** been verified in this refactor. To check
+it manually, start the normal server, ask for measured rotation, enter that value,
+align, request thrust/braking, then attempt docking. Also test denied microphone
+access and End during connection startup.
 
-The reference canvas uses `session.thinking.append` for silent context. Selected state changes use `session.commentary.append` when Live may explain them aloud. Commentary acceptance does not guarantee exact wording or audio playback.
+The Mission service advances simulation every 50 ms while running and publishes
+state through Inner Browsing. The 3D renderer uses animation frames to smooth
+those updates, with prediction capped at 150 ms if delivery stalls. Robot tools
+read the server domains directly; no frame or geometry supplies game facts.
 
-For delegated tool completion, `response.item.create` adds the `function_call_output`; `response.create` then continues the delegated Responses work. A local browser acknowledgement means Node sent those events. It does not guarantee that Responses accepted them or that GPT-Live has already spoken.
-
-These choices follow the [OpenAI Live API reference](https://developers.openai.com/api/reference/typescript/resources/live), the [GPT-Live delegation guide](https://developers.openai.com/api/docs/guides/live-delegation), and the [WebRTC guide](https://developers.openai.com/api/docs/guides/voice-webrtc?api=live).
+The left Channel console displays the transcript and last robot command in inset
+terminals. Mission sends the command result through Channel state; Starship still
+owns the command logic and human controls. Channel event logging has no UI panel.

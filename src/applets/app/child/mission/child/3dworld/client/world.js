@@ -3,6 +3,16 @@ import * as THREE from '/vendor/three/three.module.js';
 // Visual projection only: Starship supplies every position and docking decision.
 export class World {
   constructor(container) {
+    this.ship = null;
+    this.environment = null;
+    this.shipAt = performance.now();
+    this.frame = null;
+    this.animate = now => {
+      this.frame = null;
+      if (this.disposed) return;
+      this.draw(now);
+      this.frame = requestAnimationFrame(this.animate);
+    };
     this.scene = new THREE.Scene();
     this.scene.background = new THREE.Color(0x020407);
     this.camera = new THREE.PerspectiveCamera(55, 1, 0.05, 600);
@@ -11,6 +21,7 @@ export class World {
     container.append(this.renderer.domElement);
     const textureLoader = new THREE.TextureLoader();
     textureLoader.load('/blackhole.png', texture => {
+      if (this.disposed) { texture.dispose(); return; }
       texture.colorSpace = THREE.SRGBColorSpace;
       const material = new THREE.MeshBasicMaterial({
         map: texture, transparent: true, opacity: 0.84, depthWrite: false,
@@ -102,8 +113,38 @@ export class World {
     this.resize.observe(container);
   }
 
-  render(ship) {
-    const time = performance.now() / 1000;
+  dispose() {
+    this.disposed = true;
+    if (this.frame !== null) cancelAnimationFrame(this.frame);
+    this.resize.disconnect();
+    this.scene.traverse(object => {
+      object.geometry?.dispose();
+      const materials = Array.isArray(object.material) ? object.material : [object.material];
+      for (const material of materials) { material?.map?.dispose(); material?.dispose(); }
+    });
+    this.renderer.dispose();
+    this.renderer.domElement.remove();
+  }
+
+  render(ship, environment) {
+    if (ship) {
+      this.ship = { ...ship };
+      this.environment = environment ? { ...environment } : this.environment;
+      this.shipAt = performance.now();
+    }
+    this.draw(performance.now());
+    if (this.frame === null && !this.disposed) this.frame = requestAnimationFrame(this.animate);
+  }
+
+  draw(now) {
+    if (!this.ship) return;
+    const elapsed = this.environment?.state === 'running'
+      ? Math.max(0, now - this.shipAt) / 1000
+      : 0;
+    // The server snapshot remains authoritative. This local projection fills
+    // the visual time between snapshots; it never drives a command or result.
+    const ship = this.projectShip(elapsed);
+    const time = now / 1000;
     for (const star of this.blinkMaterials)
       star.material.opacity = 0.35 + (Math.sin(time * star.speed + star.phase) + 1) * 0.325;
     const roll = THREE.MathUtils.degToRad(ship.angle);
@@ -115,5 +156,17 @@ export class World {
     this.camera.rotation.z = roll;
     this.guide.material.color.set(ship.lockReady ? 0xffffff : 0x71ffac);
     this.renderer.render(this.scene, this.camera);
+  }
+
+  projectShip(elapsed) {
+    // Brief visual extrapolation between server updates, never game physics.
+    // Stop predicting if the connection stalls; terminal snapshots freeze motion.
+    elapsed = Math.min(elapsed, 0.15);
+    return {
+      ...this.ship,
+      targetAngle: this.ship.targetAngle + this.ship.targetSpeed * elapsed,
+      angle: this.ship.angle + this.ship.speed * elapsed,
+      distance: this.ship.distance - this.ship.velocity * elapsed,
+    };
   }
 }

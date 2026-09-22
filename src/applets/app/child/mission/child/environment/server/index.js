@@ -1,6 +1,6 @@
 // Environment owns elapsed time and the meaning of terminal conditions.
 // Starship supplies its energy; Environment never owns a second energy balance.
-export class Environment {
+export class Domain {
   constructor({ durationMs = 60_000, onTransition = () => {} } = {}) {
     this.durationMs = durationMs;
     this.onTransition = onTransition;
@@ -55,4 +55,12 @@ export class Environment {
     return { state: this.state, reason: this.reason, remainingMs: this.remainingMs,
       durationMs: this.durationMs, allowsCommands: this.allowsCommands };
   }
+}
+
+export function createServerApplet({ mission }) {
+  return {
+    init() {
+      return { domain: mission.environment, mission };
+    },
+  };
 }

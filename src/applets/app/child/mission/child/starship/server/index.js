@@ -10,15 +10,23 @@ export const COMMANDS = Object.freeze({
   nudge: { actor: "user", cost: 1 },
 });
 
-export class Starship {
-  constructor(environment, { onEvent = () => {} } = {}) {
+export function assertCommandAllowed(name, actor, args = {}) {
+  const command = COMMANDS[name];
+  if (!command || command.actor !== actor) throw new Error("Actor is not allowed to use this command");
+  if (name === "setRotationSpeed" && (!Number.isFinite(args.value) || args.value <= 0 || args.value > 1000))
+    throw new Error("Rotation must be between 0 and 1000 degrees/sec");
+  if (name === "nudge" && (![args.x, args.y].every(Number.isFinite) || Math.abs(args.x) + Math.abs(args.y) !== 5))
+    throw new Error("Nudge must be one five-unit step");
+  return command;
+}
+
+export class Domain {
+  constructor(environment) {
     this.environment = environment;
-    this.onEvent = onEvent;
     this.reset();
   }
 
   reset(now = 0) {
-    this.cancelPending("reset");
     const carriedTargetAngle = Number.isFinite(this.targetAngle) ? this.targetAngle : 0;
     Object.assign(this, {
       energy: 100, idleDrainPerSecond: 0.15,
@@ -44,19 +52,17 @@ export class Starship {
 
   available(name, actor) {
     return COMMANDS[name]?.actor === actor && this.environment.allowsCommands &&
-      !this.pending && this.energy >= COMMANDS[name].cost;
+      this.energy >= COMMANDS[name].cost;
   }
 
   executeCommand(name, actor, action) {
     const command = COMMANDS[name];
     if (!command || command.actor !== actor) return this.failure("actor_not_allowed");
     if (!this.environment.allowsCommands) return this.failure(this.environment.reason || "game_not_running");
-    if (this.pending) return this.failure("operation_in_progress");
     if (this.energy < command.cost) return this.failure("insufficient_energy");
     // Validate inputs/preconditions before entering here: rejected commands cost nothing.
     this.energy = Math.max(0, this.energy - command.cost);
     this.environment.updateFromStarship(this.snapshot());
-    this.onEvent({ type: "command", command: name, actor, cost: command.cost, energy: this.energy });
     if (!this.environment.allowsCommands) return this.failure(this.environment.reason);
     return action();
   }
@@ -65,8 +71,8 @@ export class Starship {
     if (!Number.isFinite(value) || value <= 0 || value > 1000) return this.failure("invalid_speed");
     return this.executeCommand("setRotationSpeed", actor, () => {
       this.requestedSpeed = value;
+      this.speed = value;
       this.aligning = false;
-      this.onEvent({ type: "speed_set", speed: value, matched: this.speedMatched });
       return { status: "completed", speed: value };
     });
   }
@@ -76,7 +82,6 @@ export class Starship {
     if (this.aligning) return this.failure("alignment_already_active");
     return this.executeCommand("beginAlignment", actor, () => {
       this.aligning = true;
-      this.onEvent({ type: "alignment_started" });
       return { status: "completed" };
     });
   }
@@ -89,21 +94,22 @@ export class Starship {
       const wasAligned = this.aligned;
       this.x = Math.max(-100, Math.min(100, this.x + x));
       this.y = Math.max(-100, Math.min(100, this.y + y));
-      if (wasAligned !== this.aligned) this.onEvent({ type: "alignment_changed", aligned: this.aligned });
       return { status: "completed", x: this.x, y: this.y };
     });
   }
 
-  analyzeRotationSpeed(actor, sampleMs = 1000) {
-    return this.executeCommand("analyzeRotationSpeed", actor, () => new Promise(resolve => {
-      this.pending = { kind: "analysis", resolve, start: this.now,
-        angle: this.targetAngle, duration: this.duration(sampleMs, 1000) };
-    }));
+  analyzeRotationSpeed(actor) {
+    return this.executeCommand("analyzeRotationSpeed", actor, () => {
+      this.measuredSpeed = this.targetSpeed;
+      return { status: "completed", speed_degrees_per_second: this.measuredSpeed,
+      sample_ms: 0, energy: this.energy,
+      };
+    });
   }
 
   inspect(actor) {
     if (actor !== "model") return this.failure("actor_not_allowed");
-    // Read-only telemetry remains available during an animation and after game over.
+    // Read-only state remains available during and after the mission.
     return { status: "completed", ...this.snapshot(), environment: this.environment.snapshot(),
       rotation_angle_degrees: ((this.angle % 360) + 360) % 360,
       target_angle_degrees: ((this.targetAngle % 360) + 360) % 360,
@@ -130,16 +136,20 @@ export class Starship {
     });
   }
 
-  dock(actor, durationMs = 1400) {
-    return this.executeCommand("dock", actor, () => new Promise(resolve => {
-      this.pending = { kind: "dock", resolve, start: this.now,
-        startedReady: this.lockReady,
-        duration: this.duration(durationMs, 1400) };
-    }));
-  }
-
-  duration(value, fallback) {
-    return Number.isFinite(value) ? Math.max(100, Math.min(5000, value)) : fallback;
+  dock(actor) {
+    return this.executeCommand("dock", actor, () => {
+      const measurements = {
+        center_offset_x: this.x / 50, center_offset_y: this.y / 50,
+        distance: this.distance, velocity: this.velocity, speed_error: Math.abs(this.speed - this.targetSpeed),
+        angle_error: this.angleError, energy: this.energy,
+      };
+      this.docked = this.lockReady;
+      this.environment.updateFromStarship(this.snapshot());
+      return { ...measurements, status: this.docked ? "completed" : "failed",
+        reason: this.docked ? null : "docking_missed",
+        message: this.docked ? "Docking confirmed." :
+          "Docking missed. Energy was spent. User may recalibrate and try again." };
+    });
   }
 
   tick(now, elapsedSeconds) {
@@ -150,13 +160,10 @@ export class Starship {
     // The station rotates in the idle view. Mission systems below wait for running.
     this.targetAngle += this.targetSpeed * deltaSeconds;
     if (!this.environment.allowsCommands) {
-      this.cancelPending(this.environment.reason || "game_stopped");
       return;
     }
-    const wasMatched = this.speedMatched;
     this.speed += Math.sign(this.requestedSpeed - this.speed) *
       Math.min(Math.abs(this.requestedSpeed - this.speed), deltaSeconds * 18);
-    if (!wasMatched && this.speedMatched) this.onEvent({ type: "rotation_matched" });
     this.angle += this.speed * deltaSeconds;
     const before = this.velocity;
     if (this.motion === "thrust") this.velocity = Math.min(1.8, this.velocity + deltaSeconds * 0.6);
@@ -168,42 +175,11 @@ export class Starship {
     this.energy = Math.max(0, this.energy - deltaSeconds * this.idleDrainPerSecond);
     this.environment.updateFromStarship(this.snapshot());
     if (!this.environment.allowsCommands) {
-      this.cancelPending(this.environment.reason);
       return;
     }
-    const operation = this.pending;
-    if (!operation) return;
-    const elapsed = now - operation.start;
-    const progress = Math.min(1, elapsed / operation.duration);
-    if (progress < 1) return;
-    this.pending = null;
-    if (operation.kind === "analysis") {
-      this.measuredSpeed = Number(((this.targetAngle - operation.angle) / elapsed * 1000).toFixed(2));
-      operation.resolve({ status: "completed", speed_degrees_per_second: this.measuredSpeed,
-        sample_ms: Math.round(elapsed), energy: this.energy });
-      return;
-    }
-    const measurements = {
-      center_offset_x: this.x / 50, center_offset_y: this.y / 50,
-      distance: this.distance, velocity: this.velocity, speed_error: Math.abs(this.speed - this.targetSpeed),
-      angle_error: this.angleError, energy: this.energy,
-    };
-    this.docked = operation.startedReady && this.lockReady;
-    this.environment.updateFromStarship(this.snapshot());
-    operation.resolve({ ...measurements, status: this.docked ? "completed" : "failed",
-      reason: this.docked ? null : "docking_missed",
-      message: this.docked ? "Browser confirmed docking." :
-        "Docking missed. Energy was spent and time elapsed. User may recalibrate and try again." });
   }
 
   failure(reason) { return { status: "failed", reason, message: reason.replaceAll("_", " ") }; }
-
-  cancelPending(reason) {
-    if (!this.pending) return;
-    const { resolve } = this.pending;
-    this.pending = null;
-    resolve(this.failure(reason));
-  }
 
   snapshot() {
     return { energy: this.energy, targetAngle: this.targetAngle, angle: this.angle,
@@ -213,6 +189,23 @@ export class Starship {
       requestedSpeed: this.requestedSpeed, distance: this.distance, velocity: this.velocity,
       motion: this.motion, stoppingDistance: this.velocity ** 2 / 2.4,
       lockReady: this.lockReady, portRadius: 0.65, guideRadius: 0.25,
-      docked: this.docked, busy: Boolean(this.pending) };
+      docked: this.docked, busy: false };
   }
+}
+
+export function createServerApplet({ mission }) {
+  return {
+    init() {
+      return { domain: mission.starship, mission };
+    },
+  };
+}
+
+export function createServerOperations({ mission }) {
+  return {
+    async handle({ operation, data }) {
+      if (operation === 'Human command') return mission.execute(data.command, 'user', data.args || {});
+      throw new Error(`Unknown operation: ${operation}`);
+    },
+  };
 }

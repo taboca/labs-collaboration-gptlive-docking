@@ -10,7 +10,7 @@ body { margin: 0; min-width: 320px; overflow: hidden; }
 .side-console { position: relative; z-index: 1; min-height: 0; overflow-y: auto; overflow-x: hidden; padding: 24px 18px; scrollbar-width: thin; scrollbar-color: #687178 #22282d; background: linear-gradient(100deg, #171c20, #424a50 48%, #23292e); border: 0; }
 .left-console { transform-origin: right center; transform: translate(var(--tremor-x, 0px), var(--tremor-y, 0px)) rotateY(7deg); transition: transform 90ms ease-out; }
 .right-console { transform-origin: left center; transform: translate(var(--tremor-x, 0px), var(--tremor-y, 0px)) rotateY(-7deg); transition: transform 90ms ease-out; }
-.scene { min-width: 0; min-height: 0; }
+.scene { position: relative; min-width: 0; min-height: 0; }
 #world { position: relative; width: 100%; height: 100%; overflow: hidden; }
 #world canvas { display: block; position: absolute; inset: 0; width: 100%; height: 100%; }
 .command { margin: 0 0 18px; padding: 16px; border: 1px solid #ffffff70; border-radius: 17px; overflow-wrap: anywhere; font-size: 12px; color: #101512; }
@@ -34,21 +34,22 @@ p { line-height: 1.5; margin: 10px 0; }
 progress { width: 100%; height: 7px; border: 0; border-radius: 4px; overflow: hidden; background: #829b88; accent-color: #245935; }
 progress::-webkit-progress-bar { background: #829b88; }
 progress::-webkit-progress-value { background: #245935; }
-button, input, textarea { font: inherit; color: #101512; background: #ffffff94; border: 1px solid #6e7f75; border-radius: 8px; }
+button, input { font: inherit; color: #101512; background: #ffffff94; border: 1px solid #6e7f75; border-radius: 8px; }
 button { min-height: 36px; padding: 8px 10px; font-size: 11px; cursor: pointer; }
 button:hover:not(:disabled) { background: #fff; }
 button:disabled, input:disabled { opacity: .5; cursor: not-allowed; }
-button:focus-visible, input:focus-visible, textarea:focus-visible, summary:focus-visible { outline: 2px solid #164e32; outline-offset: 3px; }
+button:focus-visible, input:focus-visible, summary:focus-visible { outline: 2px solid #164e32; outline-offset: 3px; }
 .session-controls, .form-row, .arrows { display: flex; flex-wrap: wrap; gap: 8px; }
 .form-row { flex-wrap: nowrap; margin-top: 10px; }
 input { width: 100%; min-width: 0; padding: 8px; }
 .arrows button { flex: 1; }
-textarea { width: 100%; min-height: 100px; resize: vertical; padding: 10px; margin: 12px 0; font-size: 12px; }
 summary { cursor: pointer; font-weight: bold; }
 details[open] summary { margin-bottom: 14px; }
 #commandFeedback:empty { display: none; }
 #transcript { height: 180px; overflow: auto; font-size: 12px; }
-#transcript strong { color: #14371f; }
+.terminal { background: #020805; color: #a2ffb5; border: 1px solid #4b8b60; border-radius: 12px; padding: 12px; font-family: "Courier New", monospace; line-height: 1.5; box-shadow: inset 0 0 0 3px #09190e, inset 0 2px 12px #000; text-shadow: 0 0 5px #69ff922e; scrollbar-color: #4b8b60 #020805; }
+#transcript strong { color: #c5ffd2; }
+.command > output.terminal { max-height: 220px; font-size: 11px; }
 #remoteAudio { display: none; }
 #activityLabel { font-size: 10px; margin-left: auto; }
 #activityOrb { width: 10px; height: 10px; flex: 0 0 10px; background: #278a40; border-radius: 50%; }
@@ -58,8 +59,6 @@ details[open] summary { margin-bottom: 14px; }
 .radio a { color: #153b5c; font-size: 11px; }
 #radioPlayer { margin-top: 12px; }
 #radioPlayer iframe { display: block; width: 100%; min-height: 200px; aspect-ratio: 16 / 9; border: 0; background: #000; border-radius: 8px; }
-#eventLog { height: 180px; overflow: auto; padding-left: 20px; font-size: 10px; }
-#eventLog li { margin-bottom: 8px; }
 @media (max-width: 900px) {
   .cockpit { grid-template-columns: 244px minmax(0, 1fr) 244px; perspective: none; }
   .left-console, .right-console { transform: translate(var(--tremor-x, 0px), var(--tremor-y, 0px)); padding: 12px 8px; }
@@ -75,3 +74,15 @@ details[open] summary { margin-bottom: 14px; }
 @media (prefers-reduced-motion: reduce) {
   .twinkle, #activityOrb { animation: none !important; }
 }
+
+.mission-bar { position: relative; z-index: 3; height: 56px; display: flex; align-items: center; gap: 12px; padding: 8px 18px; color: #d7e9df; background: #151c22; font-size: 12px; }
+.mission-bar [role=status] { color: #ffb9a9; }
+.cockpit { height: calc(100dvh - 56px); }
+.welcome { padding: 15vh 10vw; color: #c7e3d2; line-height: 2; }
+[data-mission]:not(:empty) + .welcome { display: none; }
+.environment-view, .world-host { position: absolute; inset: 0; width: 100%; height: 100%; }
+.world-hud { position: absolute; bottom: 20px; left: 10px; right: 10px; text-align: center; color: #c7e3d2; font-size: 12px; pointer-events: none; text-shadow: 0 1px 4px #000; }
+audio { width: 100%; height: 30px; }
+#transport-status { position: fixed; bottom: 0; color: #ffb9a9; background: #151c22; z-index: 5; }
+#transport-status:empty { display: none; }
+@media (max-width: 700px) { .cockpit { height: auto; } .mission-bar { height: auto; flex-wrap: wrap; } }
