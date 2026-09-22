@@ -162,13 +162,11 @@ A useful reading order is the [registry](src/appletRegistry.js), an
 The [browser bootstrap](public/bootstrap.js) connects transport to the Inner
 Browsing navigator, which mounts and updates browser companions.
 
-The framework is included as the local dependency `vendor/inner-browsing`, with
-its source, tests, and AGPL-3.0-or-later license. See
-[vendor/README.md](vendor/README.md) for the upstream revision and update process.
+Inner Browsing is available at
+[github.com/taboca/inner-browsing](https://github.com/taboca/inner-browsing).
 
 ```sh
 npm test
-node --test vendor/inner-browsing/test/*.test.js
 ```
 
 Application tests cover mission lifetime and isolation, command validation,
