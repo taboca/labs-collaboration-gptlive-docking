@@ -231,17 +231,45 @@ status. The adapter owns the OpenAI session and sideband protocol; it does not
 own the mission or the game rules.
 
 ~~~js
-if (operation === "Connect") {
-  const missionId = data.missionId;
-  return gptLive.start(data.sdp, {
-    execute: command => missionId === mission.id && mission.active
-      ? mission.execute(command, "model")
-      : Promise.resolve({ status: "failed", reason: "mission_ended" }),
-    status: status => mission.setChannelStatus(status, missionId)?.catch(() => {}),
-  });
+async handle({ operation, data }) {
+  if (operation === "Connect") {
+    const missionId = data.missionId;
+    const executeDelegatedCommand = command => {
+      if (missionId === mission.id && mission.active) {
+        return mission.execute(command, "model");
+      }
+      return Promise.resolve({
+        status: "failed",
+        reason: "mission_ended",
+      });
+    };
+    const reportChannelStatus = statusText => {
+      const update = mission.setChannelStatus(statusText, missionId);
+      if (update) {
+        return update.catch(() => {});
+      }
+    };
+
+    return gptLive.start(data.sdp, {
+      executeCommand: executeDelegatedCommand,
+      status: reportChannelStatus,
+    });
+  }
+
+  if (operation === "Ready") {
+    return mission.ready(data.missionId);
+  }
+
+  if (operation === "Closed") {
+    if (data.missionId !== mission.id) {
+      return;
+    }
+    const message = typeof data.message === "string"
+      ? data.message.slice(0, 200)
+      : "";
+    return mission.end(message);
+  }
 }
-if (operation === "Ready") return mission.ready(data.missionId);
-if (operation === "Closed") return mission.end(data.message);
 ~~~
 
 The implementation also checks mission IDs and bounds the close message. `Ready`
@@ -249,6 +277,11 @@ arrives after the browser receives `session.started`; it starts the server-owned
 mission clock. `Closed` ends the mission and destroys its applet tree. Destroying
 Channel closes the Live service. The callback's captured mission ID prevents a
 late delegated command or sideband status from affecting a newer mission.
+
+`executeDelegatedCommand` receives an application command after `gptLive.js` has
+mapped the OpenAI tool name. It does not receive or parse the raw OpenAI
+`function_call` event; event envelopes and `call_id` handling stay inside the
+OpenAI adapter.
 
 The main server creates one `OpenAILiveService` per `/runtime` browser socket,
 but it does not start Live at construction. Channel starts it only when the
@@ -321,15 +354,18 @@ inspect itself.
 The core adapter boundary looks like this (with unrelated validation omitted):
 
 ~~~js
-// Channel's server companion passes this callback to gptLive.start().
-execute: command => missionId === mission.id && mission.active
-  ? mission.execute(command, "model")
-  : Promise.resolve({ status: "failed", reason: "mission_ended" })
+const event = envelope.event;
+if (
+  envelope.type !== "response.event"
+  || event?.type !== "response.output_item.done"
+  || event.item?.type !== "function_call"
+) {
+  return;
+}
 
-// Inside OpenAILiveService.handle(), after validating event and arguments:
 const item = event.item;
 const command = commands[item.name];
-const result = await this.execute(command);
+const result = await this.executeCommand(command);
 
 this.send({
   type: "response.item.create",
@@ -362,9 +398,10 @@ the tool can obtain.
 
 ## How are robot commands checked?
 
-The OpenAI adapter maps tool names to application command names, then calls the
-`execute` callback supplied by Channel. That callback enters Mission with actor
-`model`; Mission and Starship validate the command before changing state.
+The OpenAI adapter maps tool names to application command names, then invokes
+the `executeCommand` callback supplied by Channel. Channel's
+`executeDelegatedCommand` callback enters Mission with actor `model`; Mission
+and Starship validate the command before changing state.
 
 ~~~js
 const commands = Object.freeze({
@@ -375,8 +412,9 @@ const commands = Object.freeze({
   dock_objects: "dock",
 });
 
-// Channel supplies this application callback to OpenAILiveService.start():
-execute: command => mission.execute(command, "model")
+// Inside OpenAILiveService.handle(), after the tool name is mapped:
+const command = commands[item.name];
+const result = await this.executeCommand(command);
 ~~~
 
 Mission checks that it is active, advances current simulation time, records the

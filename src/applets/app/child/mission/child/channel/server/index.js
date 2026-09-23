@@ -22,7 +22,7 @@ export function createServerOperations({ mission, gptLive }) {
         }
 
         const missionId = data.missionId;
-        const execute = command => {
+        const executeDelegatedCommand = command => {
           if (missionId === mission.id && mission.active) {
             return mission.execute(command, 'model');
           }
@@ -31,14 +31,17 @@ export function createServerOperations({ mission, gptLive }) {
             reason: 'mission_ended',
           });
         };
-        const status = statusText => {
+        const reportChannelStatus = statusText => {
           const update = mission.setChannelStatus(statusText, missionId);
           if (update) {
             return update.catch(() => {});
           }
         };
 
-        return gptLive.start(data.sdp, { execute, status });
+        return gptLive.start(data.sdp, {
+          executeCommand: executeDelegatedCommand,
+          status: reportChannelStatus,
+        });
       }
 
       if (operation === 'Ready') {

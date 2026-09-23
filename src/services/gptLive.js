@@ -27,8 +27,9 @@ export class OpenAILiveService {
   // Called for Channel's `Connect` operation by
   // src/applets/app/child/mission/child/channel/server/index.js. Channel owns
   // lifecycle; this adapter owns OpenAI Live/sideband protocol. The callbacks
-  // bridge delegated commands and status back to Mission.
-  async start(sdp, { execute, status }) {
+  // bridge delegated commands and status back to Mission. `executeCommand`
+  // receives a mapped application command, not an OpenAI function-call event.
+  async start(sdp, { executeCommand, status }) {
     if (typeof sdp !== 'string' || !sdp.trim() || sdp.length > 60000) {
       throw new Error('An SDP offer is required');
     }
@@ -66,7 +67,7 @@ export class OpenAILiveService {
 
       this.sideband = sideband;
       this.calls = new Set();
-      this.execute = execute;
+      this.executeCommand = executeCommand;
       this.status = status;
 
       sideband.on('event', event => {
@@ -130,7 +131,7 @@ export class OpenAILiveService {
       ) {
         throw new Error('Unsupported tool or arguments');
       }
-      result = await this.execute(commands[item.name]);
+      result = await this.executeCommand(commands[item.name]);
     } catch (error) {
       result = { status: 'failed', reason: error.message };
     }
