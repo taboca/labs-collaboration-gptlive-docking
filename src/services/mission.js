@@ -2,6 +2,14 @@ import { randomUUID } from 'node:crypto';
 import { performance } from 'node:perf_hooks';
 import {
   assertCommandAllowed,
+  COMMAND_MODEL_ANALYZE_ROTATION_SPEED,
+  COMMAND_MODEL_APPROACH,
+  COMMAND_MODEL_BRAKE,
+  COMMAND_MODEL_DOCK,
+  COMMAND_MODEL_INSPECT,
+  COMMAND_USER_BEGIN_ALIGNMENT,
+  COMMAND_USER_NUDGE,
+  COMMAND_USER_SET_ROTATION_SPEED,
   Domain as Starship,
 } from './applets/app/child/mission/child/starship/server/index.js';
 import {
@@ -194,28 +202,28 @@ export class Mission {
 
     let result;
     switch (command) {
-      case 'setRotationSpeed':
+      case COMMAND_USER_SET_ROTATION_SPEED:
         result = this.starship.setRotationSpeed(args.value, actor);
         break;
-      case 'beginAlignment':
+      case COMMAND_USER_BEGIN_ALIGNMENT:
         result = this.starship.beginAlignment(actor);
         break;
-      case 'nudge':
+      case COMMAND_USER_NUDGE:
         result = this.starship.nudge(args.x, args.y, actor);
         break;
-      case 'analyzeRotationSpeed':
+      case COMMAND_MODEL_ANALYZE_ROTATION_SPEED:
         result = this.starship.analyzeRotationSpeed(actor);
         break;
-      case 'inspect':
+      case COMMAND_MODEL_INSPECT:
         result = this.starship.inspect(actor);
         break;
-      case 'approach':
+      case COMMAND_MODEL_APPROACH:
         result = this.starship.approach(actor);
         break;
-      case 'brake':
+      case COMMAND_MODEL_BRAKE:
         result = this.starship.brake(actor);
         break;
-      case 'dock':
+      case COMMAND_MODEL_DOCK:
         result = this.starship.dock(actor);
         break;
       default:

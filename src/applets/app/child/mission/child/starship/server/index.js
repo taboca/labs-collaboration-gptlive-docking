@@ -1,21 +1,32 @@
+// Command identifiers make actor ownership visible in Mission dispatch.
+// Their string values stay stable for applet operations and Live tool mapping.
+export const COMMAND_MODEL_INSPECT = "inspect";
+export const COMMAND_MODEL_ANALYZE_ROTATION_SPEED = "analyzeRotationSpeed";
+export const COMMAND_MODEL_DOCK = "dock";
+export const COMMAND_MODEL_APPROACH = "approach";
+export const COMMAND_MODEL_BRAKE = "brake";
+export const COMMAND_USER_SET_ROTATION_SPEED = "setRotationSpeed";
+export const COMMAND_USER_BEGIN_ALIGNMENT = "beginAlignment";
+export const COMMAND_USER_NUDGE = "nudge";
+
 // Symbolic actor privileges teach the command boundary; they are not authentication.
 export const COMMANDS = Object.freeze({
-  inspect: { actor: "model", cost: 0 },
-  analyzeRotationSpeed: { actor: "model", cost: 6 },
-  dock: { actor: "model", cost: 12 },
-  approach: { actor: "model", cost: 3 },
-  brake: { actor: "model", cost: 2 },
-  setRotationSpeed: { actor: "user", cost: 4 },
-  beginAlignment: { actor: "user", cost: 2 },
-  nudge: { actor: "user", cost: 1 },
+  [COMMAND_MODEL_INSPECT]: { actor: "model", cost: 0 },
+  [COMMAND_MODEL_ANALYZE_ROTATION_SPEED]: { actor: "model", cost: 6 },
+  [COMMAND_MODEL_DOCK]: { actor: "model", cost: 12 },
+  [COMMAND_MODEL_APPROACH]: { actor: "model", cost: 3 },
+  [COMMAND_MODEL_BRAKE]: { actor: "model", cost: 2 },
+  [COMMAND_USER_SET_ROTATION_SPEED]: { actor: "user", cost: 4 },
+  [COMMAND_USER_BEGIN_ALIGNMENT]: { actor: "user", cost: 2 },
+  [COMMAND_USER_NUDGE]: { actor: "user", cost: 1 },
 });
 
 export function assertCommandAllowed(name, actor, args = {}) {
   const command = COMMANDS[name];
   if (!command || command.actor !== actor) throw new Error("Actor is not allowed to use this command");
-  if (name === "setRotationSpeed" && (!Number.isFinite(args.value) || args.value <= 0 || args.value > 1000))
+  if (name === COMMAND_USER_SET_ROTATION_SPEED && (!Number.isFinite(args.value) || args.value <= 0 || args.value > 1000))
     throw new Error("Rotation must be between 0 and 1000 degrees/sec");
-  if (name === "nudge" && (![args.x, args.y].every(Number.isFinite) || Math.abs(args.x) + Math.abs(args.y) !== 5))
+  if (name === COMMAND_USER_NUDGE && (![args.x, args.y].every(Number.isFinite) || Math.abs(args.x) + Math.abs(args.y) !== 5))
     throw new Error("Nudge must be one five-unit step");
   return command;
 }
@@ -69,7 +80,7 @@ export class Domain {
 
   setRotationSpeed(value, actor) {
     if (!Number.isFinite(value) || value <= 0 || value > 1000) return this.failure("invalid_speed");
-    return this.executeCommand("setRotationSpeed", actor, () => {
+    return this.executeCommand(COMMAND_USER_SET_ROTATION_SPEED, actor, () => {
       this.requestedSpeed = value;
       this.speed = value;
       this.aligning = false;
@@ -80,7 +91,7 @@ export class Domain {
   beginAlignment(actor) {
     if (!this.speedMatched) return this.failure("match_rotation_speed_first");
     if (this.aligning) return this.failure("alignment_already_active");
-    return this.executeCommand("beginAlignment", actor, () => {
+    return this.executeCommand(COMMAND_USER_BEGIN_ALIGNMENT, actor, () => {
       this.aligning = true;
       return { status: "completed" };
     });
@@ -90,7 +101,7 @@ export class Domain {
     if (!this.aligning) return this.failure("begin_alignment_first");
     if (![x, y].every(Number.isFinite) || Math.abs(x) + Math.abs(y) !== 5)
       return this.failure("invalid_nudge");
-    return this.executeCommand("nudge", actor, () => {
+    return this.executeCommand(COMMAND_USER_NUDGE, actor, () => {
       const wasAligned = this.aligned;
       this.x = Math.max(-100, Math.min(100, this.x + x));
       this.y = Math.max(-100, Math.min(100, this.y + y));
@@ -99,7 +110,7 @@ export class Domain {
   }
 
   analyzeRotationSpeed(actor) {
-    return this.executeCommand("analyzeRotationSpeed", actor, () => {
+    return this.executeCommand(COMMAND_MODEL_ANALYZE_ROTATION_SPEED, actor, () => {
       this.measuredSpeed = this.targetSpeed;
       return { status: "completed", speed_degrees_per_second: this.measuredSpeed,
       sample_ms: 0, energy: this.energy,
@@ -114,14 +125,14 @@ export class Domain {
       rotation_angle_degrees: ((this.angle % 360) + 360) % 360,
       target_angle_degrees: ((this.targetAngle % 360) + 360) % 360,
       angle_error_degrees: this.angleError, docking_cost: COMMANDS.dock.cost,
-      can_dock: this.available("dock", "model") && this.lockReady, cost: 0 };
+      can_dock: this.available(COMMAND_MODEL_DOCK, "model") && this.lockReady, cost: 0 };
   }
 
   get lockReady() { return this.aligned && this.speedMatched && this.distance <= 0.3 &&
     this.distance >= -0.3 && this.velocity <= 0.15; }
 
   approach(actor) {
-    return this.executeCommand("approach", actor, () => {
+    return this.executeCommand(COMMAND_MODEL_APPROACH, actor, () => {
       this.motion = "thrust";
       return { status: "completed", message: "Forward thrust engaged. Brake before contact.",
         distance: this.distance, velocity: this.velocity };
@@ -129,7 +140,7 @@ export class Domain {
   }
 
   brake(actor) {
-    return this.executeCommand("brake", actor, () => {
+    return this.executeCommand(COMMAND_MODEL_BRAKE, actor, () => {
       this.motion = "brake";
       return { status: "completed", message: "Braking engaged; inspect for actual stopping speed.",
         distance: this.distance, velocity: this.velocity };
@@ -137,7 +148,7 @@ export class Domain {
   }
 
   dock(actor) {
-    return this.executeCommand("dock", actor, () => {
+    return this.executeCommand(COMMAND_MODEL_DOCK, actor, () => {
       const measurements = {
         center_offset_x: this.x / 50, center_offset_y: this.y / 50,
         distance: this.distance, velocity: this.velocity, speed_error: Math.abs(this.speed - this.targetSpeed),

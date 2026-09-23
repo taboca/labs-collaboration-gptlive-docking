@@ -422,17 +422,31 @@ task, calls the Starship domain, saves the result, and publishes state. The
 Starship command table owns the actor and cost:
 
 ~~~js
+export const COMMAND_MODEL_INSPECT = "inspect";
+export const COMMAND_MODEL_ANALYZE_ROTATION_SPEED = "analyzeRotationSpeed";
+export const COMMAND_MODEL_DOCK = "dock";
+export const COMMAND_MODEL_APPROACH = "approach";
+export const COMMAND_MODEL_BRAKE = "brake";
+export const COMMAND_USER_SET_ROTATION_SPEED = "setRotationSpeed";
+export const COMMAND_USER_BEGIN_ALIGNMENT = "beginAlignment";
+export const COMMAND_USER_NUDGE = "nudge";
+
 export const COMMANDS = Object.freeze({
-  inspect: { actor: "model", cost: 0 },
-  analyzeRotationSpeed: { actor: "model", cost: 6 },
-  dock: { actor: "model", cost: 12 },
-  approach: { actor: "model", cost: 3 },
-  brake: { actor: "model", cost: 2 },
-  setRotationSpeed: { actor: "user", cost: 4 },
-  beginAlignment: { actor: "user", cost: 2 },
-  nudge: { actor: "user", cost: 1 },
+  [COMMAND_MODEL_INSPECT]: { actor: "model", cost: 0 },
+  [COMMAND_MODEL_ANALYZE_ROTATION_SPEED]: { actor: "model", cost: 6 },
+  [COMMAND_MODEL_DOCK]: { actor: "model", cost: 12 },
+  [COMMAND_MODEL_APPROACH]: { actor: "model", cost: 3 },
+  [COMMAND_MODEL_BRAKE]: { actor: "model", cost: 2 },
+  [COMMAND_USER_SET_ROTATION_SPEED]: { actor: "user", cost: 4 },
+  [COMMAND_USER_BEGIN_ALIGNMENT]: { actor: "user", cost: 2 },
+  [COMMAND_USER_NUDGE]: { actor: "user", cost: 1 },
 });
 ~~~
+
+The actor-prefixed constant names make ownership visible in Mission dispatch and
+the Starship rule table. Their values remain the existing application command
+strings, so browser operations and Live tool mapping keep using names such as
+`inspect` and `analyzeRotationSpeed`.
 
 The tool schema and command table serve different purposes. The schema tells the
 Responses model what it may request. The server command table enforces which

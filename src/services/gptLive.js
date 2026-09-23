@@ -1,14 +1,21 @@
 import OpenAI from 'openai';
 import { SidebandWS } from 'openai/resources/live/sideband/ws';
 import { randomUUID } from 'node:crypto';
+import {
+  COMMAND_MODEL_ANALYZE_ROTATION_SPEED,
+  COMMAND_MODEL_APPROACH,
+  COMMAND_MODEL_BRAKE,
+  COMMAND_MODEL_DOCK,
+  COMMAND_MODEL_INSPECT,
+} from '../applets/app/child/mission/child/starship/server/index.js';
 import { liveSession } from './gptLiveSession.js';
 
 const commands = Object.freeze({
-  inspect_starship: 'inspect',
-  analyze_rotation_speed: 'analyzeRotationSpeed',
-  approach_station: 'approach',
-  brake_ship: 'brake',
-  dock_objects: 'dock',
+  inspect_starship: COMMAND_MODEL_INSPECT,
+  analyze_rotation_speed: COMMAND_MODEL_ANALYZE_ROTATION_SPEED,
+  approach_station: COMMAND_MODEL_APPROACH,
+  brake_ship: COMMAND_MODEL_BRAKE,
+  dock_objects: COMMAND_MODEL_DOCK,
 });
 
 // Only this adapter knows nested Responses events and OpenAI correlation IDs.
