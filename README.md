@@ -7,6 +7,7 @@ brakes, and attempts docking.
 This demo teaches how **Inner Browsing** composes an application from applets with
 server and browser companions. The server owns game state and rules. Browser
 companions display that state, animate the scene, and collect human input.
+For the code-level architecture and flow FAQ, see [README.bigfaq.md](README.bigfaq.md).
 
 ## Run locally
 
