@@ -12,6 +12,10 @@ export class OpenAILiveService {
     this.connectSideband = connectSideband || ((id) => new SidebandWS(this.client, { session_id: id }));
     this.generation = 0;
   }
+  // Called for Channel's `Connect` operation by
+  // src/applets/app/child/mission/child/channel/server/index.js. Channel owns
+  // lifecycle; this adapter owns OpenAI Live/sideband protocol. The callbacks
+  // bridge delegated commands and status back to Mission.
   async start(sdp, { execute, status }) {
     if (typeof sdp !== 'string' || !sdp.trim() || sdp.length > 60000) throw new Error('An SDP offer is required');
     if (!this.client) throw new Error('Set openaiApiKey in config.json or OPENAI_API_KEY');
