@@ -14,9 +14,9 @@ import { OpenAILiveService } from './src/services/gptLive.js';
 
 // The server owns the connection-scoped Inner Browsing application session.
 // Applet server modules are loaded by this runtime after it has been assembled.
-export async function createApp({ integration, config, publish = () => {} }) {
-  const mission = new Mission({ integration, config });
-  const registry = registryFor({ mission });
+export async function createApp({ gptLive, config, publish = () => {} }) {
+  const mission = new Mission({ config, onFailure: reason => gptLive.missionFailed(reason) });
+  const registry = registryFor({ mission, gptLive });
   const stateRoot = mkdtempSync(join(tmpdir(), 'starship-'));
   const store = createStateTreeStore({ stateRoot, registry });
   const runtime = createAppletRuntime({ registry, store, publish, log: () => {} });
@@ -29,7 +29,7 @@ export async function createApp({ integration, config, publish = () => {} }) {
   } };
 }
 
-export function createServer({ config = {}, integrationFactory = () => new OpenAILiveService({ apiKey: process.env.OPENAI_API_KEY || config.openaiApiKey }) } = {}) {
+export function createServer({ config = {}, gptLiveFactory = () => new OpenAILiveService({ apiKey: process.env.OPENAI_API_KEY || config.openaiApiKey }) } = {}) {
   const port = Number(process.env.PORT || config.port) || 3000;
   const host = config.host || '127.0.0.1';
   const httpApp = express();
@@ -63,8 +63,7 @@ export function createServer({ config = {}, integrationFactory = () => new OpenA
   });
   sockets.on('connection', socket => {
     const send = value => { if (socket.readyState === 1) socket.send(JSON.stringify(value)); };
-    const connection = createApp({ config,
-      integration: integrationFactory(), publish: send });
+    const connection = createApp({ config, gptLive: gptLiveFactory(), publish: send });
     let lifecycle = Promise.resolve();
     socket.on('message', async bytes => {
       let id;

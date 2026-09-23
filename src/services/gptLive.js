@@ -62,6 +62,9 @@ export class OpenAILiveService {
     if (this.sideband?.socket.readyState === 1) this.send({ type: 'session.commentary.append',
       event_id: randomUUID(), delegation_id: null, content });
   }
+  missionFailed(reason) {
+    this.context(`Mission failed: ${reason}. Say: See you on the other side.`);
+  }
   close() {
     ++this.generation; this.starting = false;
     if (this.sideband?.socket.readyState === 1) {

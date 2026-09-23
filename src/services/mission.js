@@ -9,10 +9,10 @@ export const paths = Object.freeze({ mission: 'app/mission', channel: 'app/missi
 // Mission owns the authoritative simulation. Browser applets receive snapshots and
 // render them; robot tools read this service directly instead of asking the 3D view.
 export class Mission {
-  constructor({ config = {}, integration, now = () => performance.now() }) {
+  constructor({ config = {}, now = () => performance.now(), onFailure = () => {} }) {
     this.config = config;
     this.now = now;
-    this.integration = integration;
+    this.onFailure = onFailure;
     this.environment = new Environment({ durationMs: config.missionDurationMs || 60_000 });
     this.starship = new Starship(this.environment);
     this.tasks = [];
@@ -100,23 +100,13 @@ export class Mission {
     this.phase = state;
     if (state === this.announcedPhase) return;
     this.announcedPhase = state;
-    if (state === 'failed') this.integration.context(`Mission failed: ${this.environment.reason}. Say: See you on the other side.`);
+    if (state === 'failed') this.onFailure(this.environment.reason);
   }
 
-  async createChannel(sdp, missionId) {
-    if (missionId !== this.id) throw new Error('Stale mission');
-    if (!this.active) throw new Error('Mission is not active');
-    return this.integration.start(sdp, {
-      execute: command => missionId === this.id && this.active
-        ? this.execute(command, 'model')
-        : Promise.resolve({ status: 'failed', reason: 'mission_ended' }),
-      status: status => {
-        if (this.active && missionId === this.id) {
-          this.channelStatus = status;
-          this.runtime.update(paths.channel, this.channelState()).catch(() => {});
-        }
-      },
-    });
+  setChannelStatus(status, missionId) {
+    if (!this.active || missionId !== this.id) return;
+    this.channelStatus = status;
+    return this.runtime.update(paths.channel, this.channelState());
   }
 
   async execute(command, actor, args = {}) {
@@ -148,7 +138,6 @@ export class Mission {
     this.active = false;
     this.environment.stop();
     this.phase = 'stopped';
-    this.integration.close();
   }
 
   async end(message = '') {

@@ -73,8 +73,10 @@ services for each browser connection. Services are passed into the applets so
 they work with the same mission objects. Each tab has its own mission.
 
 The application services are grouped together in [src/services](src/services):
-`mission.js` owns the game flow, `gptLive.js` owns the OpenAI connection, and
-`gptLiveSession.js` holds the Live and Responses session configuration.
+`mission.js` owns the game flow, `gptLive.js` implements the OpenAI connection,
+and `gptLiveSession.js` holds the Live and Responses configuration. The main
+server injects Mission into the game applets and gives the Live service to Channel.
+Channel starts and closes it; Mission receives only a generic failure callback.
 
 ## Where responsibilities live
 
@@ -85,7 +87,8 @@ The application services are grouped together in [src/services](src/services):
 | [Starship server](src/applets/app/child/mission/child/starship/server/index.js) | Command permissions and costs, energy, rotation, alignment, thrust, braking, and docking checks. |
 | [Environment server](src/applets/app/child/mission/child/environment/server/index.js) | Countdown and running, won, failed, and stopped states. Starship supplies energy and docking outcomes. |
 | [Channel client](src/applets/app/child/mission/child/channel/client/index.js) and [LiveClient](src/applets/app/child/mission/child/channel/client/live-client.js) | Microphone, WebRTC, audio, transcript, connection status, and last robot result. |
-| [services/gptLive.js](src/services/gptLive.js) | Create the OpenAI session, attach its sideband, map delegated tools to application commands, and return results. |
+| [Channel server](src/applets/app/child/mission/child/channel/server/index.js) | Owns Connect, Ready, and Closed operations; starts Live and closes it when the Channel applet is destroyed. |
+| [services/gptLive.js](src/services/gptLive.js) | OpenAI session and sideband protocol, tool event decoding, command mapping, call IDs, and result return. |
 | [Starship client](src/applets/app/child/mission/child/starship/client/index.js) and [Environment client](src/applets/app/child/mission/child/environment/client/index.js) | Human controls and the clock, energy, and outcome display. |
 | [3D renderer](src/applets/app/child/mission/child/3dworld/client/world.js) | Three.js station, camera, guide, stars, background, animation, and GPU cleanup. |
 
@@ -102,12 +105,15 @@ expose them and adapt operations. The main server constructs the services in
 | Node ↔ OpenAI Live, via sideband WebSocket | Delegated Responses tool calls and their results. |
 | Browser ↔ Node, via `/runtime` WebSocket | Inner Browsing operations, replies, and applet state snapshots. |
 
-Channel’s `Connect` operation sends the browser’s SDP offer to the server. The
-OpenAI service creates the session and returns an SDP answer. After connection,
-audio travels directly between the browser and OpenAI.
+Channel’s `Connect` operation sends the browser’s SDP offer to its server
+handler, which starts the OpenAI service and returns the SDP answer. `Ready`
+starts Mission’s game clock after Live connects. `Closed` ends the mission; when
+Channel is destroyed, it closes the Live service. After setup, audio travels
+directly between the browser and OpenAI.
 
-OpenAI event formats and call IDs stay in the integration service. Starship and
-Environment receive ordinary application commands and return ordinary results.
+OpenAI event formats and call IDs stay in `gptLive.js`. The Channel handler gives
+the service an application callback into Mission; Starship and Environment deal
+only with game commands and results.
 
 ## Walkthrough case
 

@@ -7,13 +7,13 @@ export const channel = Object.freeze({
   clientModule: '/applets/app/child/mission/child/channel/client/index.js',
   clientFile: fileURLToPath(new URL('./client/index.js', import.meta.url)),
   accepts: Object.freeze({}),
-  createWithServices({ mission }) {
+  createWithServices({ mission, gptLive }) {
     return {
       ...channel,
       createServer: () => import('./server/index.js')
-        .then(m => m.createServerApplet({ mission })),
+        .then(m => m.createServerApplet({ mission, gptLive })),
       createServerOperations: () => import('./server/index.js')
-        .then(m => m.createServerOperations({ mission })),
+        .then(m => m.createServerOperations({ mission, gptLive })),
     };
   },
 });

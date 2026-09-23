@@ -1,16 +1,24 @@
-export function createServerApplet({ mission }) {
+export function createServerApplet({ mission, gptLive }) {
   return {
-    init() {
-      // Channel owns the application-facing lifecycle; GPT Live details stay in services/gptLive.js.
-      return { mission };
-    },
+    init() { return { mission }; },
+    destroy() { gptLive.close(); },
   };
 }
 
-export function createServerOperations({ mission }) {
+export function createServerOperations({ mission, gptLive }) {
   return {
     async handle({ operation, data }) {
-      if (operation === 'Connect') return mission.createChannel(data.sdp, data.missionId);
+      if (operation === 'Connect') {
+        if (data.missionId !== mission.id) throw new Error('Stale mission');
+        if (!mission.active) throw new Error('Mission is not active');
+        const missionId = data.missionId;
+        return gptLive.start(data.sdp, {
+          execute: command => missionId === mission.id && mission.active
+            ? mission.execute(command, 'model')
+            : Promise.resolve({ status: 'failed', reason: 'mission_ended' }),
+          status: status => mission.setChannelStatus(status, missionId)?.catch(() => {}),
+        });
+      }
       if (operation === 'Ready') return mission.ready(data.missionId);
       if (operation === 'Closed') {
         return data.missionId === mission.id

@@ -5,11 +5,12 @@ Responses model, the Starship game rules, Inner Browsing, and the 3D view. It
 follows the code in this repository and focuses on who owns each decision and
 how each result travels.
 
-The short version: **the browser carries the voice conversation and renders the
-game; GPT-Live handles conversation; Responses chooses delegated tools; the Node
-services execute game capabilities against server-owned state; Inner Browsing
-carries human operations and state updates between applets and browser.** The 3D
-view displays game state. It does not decide what is true.
+The short version: **Channel owns the communication lifecycle; `gptLive.js` owns
+OpenAI protocol; Mission owns the authoritative game and simulation; Starship and
+Environment enforce game rules; Inner Browsing routes human operations and state
+updates.** The main server composes one Channel-facing Live service and one
+Mission per browser connection. The 3D view displays game state; it does not
+decide what is true.
 
 ## Architecture at a glance
 
@@ -20,9 +21,13 @@ one long stack where every message passes through every layer.
 flowchart LR
   User[Human pilot] -->|speech| Browser[Browser: Channel applet]
   Browser <-->|WebRTC audio and Live events| Live[GPT-Live]
+  Browser -->|Connect: SDP; Ready; Closed| Channel[Channel server companion]
+  Channel -->|start and close| Adapter[services/gptLive.js]
   Live -->|delegates request| Responses[Responses model]
-  Responses -->|function call over sideband| Adapter[services/gptLive.js]
-  Adapter -->|application command, actor model| Mission[Mission service]
+  Responses -->|function call over sideband| Adapter
+  Adapter -->|delegated application command| Mission[Mission service]
+  Adapter -->|channel status callback| Mission
+  Mission -->|generic failure notification| Adapter
   Mission --> Ship[Starship domain]
   Mission --> Env[Environment domain]
   Ship -->|result| Mission
@@ -30,9 +35,9 @@ flowchart LR
   Mission -->|state snapshots| IB[Inner Browsing runtime]
   IB -->|applet state and operations| Browser
   Browser -->|renders snapshots| World[3D World client]
-  Browser -->|human operation, actor user| IB
+  Browser -->|human operation| IB
   IB --> Mission
-  Mission -->|result through sideband| Adapter
+  Mission -->|command result callback| Adapter
   Adapter -->|function_call_output, then response.create| Responses
   Responses -->|delegated result| Live
   Live -->|spoken reply| Browser
@@ -61,8 +66,9 @@ the Live session and joins its sideband, but does not proxy the audio stream.
 | --- | --- | --- |
 | HTTP server and runtime transport | `server.mjs` | Static assets, applet module routes, per-connection runtime setup, origin checking, WebSocket protocol adaptation, connection cleanup |
 | Applet registry | `src/appletRegistry.js` and each applet's root `index.js` | Definitions, logical paths, parent anchors, client module locations, service injection |
-| Mission orchestration | `src/services/mission.js` | Per-connection game services, command dispatch, mission lifecycle, simulation ticks, task history, state publication |
-| OpenAI Live integration | `src/services/gptLive.js` | Live session creation, sideband connection, tool event decoding, call ID deduplication, application command mapping, tool result return |
+| Mission orchestration | `src/services/mission.js` | Per-connection game state and domains, command dispatch, mission lifecycle, simulation ticks, task history, state publication, generic failure notification |
+| Channel server companion | `src/applets/app/child/mission/child/channel/server/index.js` | Handles Connect, Ready, and Closed; starts Live with Mission callbacks and closes it when Channel is destroyed |
+| OpenAI Live integration | `src/services/gptLive.js` | OpenAI Live session creation, sideband connection, tool event decoding, call ID deduplication, application command mapping, tool result return, OpenAI-specific context events |
 | OpenAI session instructions | `src/services/gptLiveSession.js` | Live model, Live instructions, Responses model, delegated instructions, tool schemas |
 | Starship domain | `src/applets/app/child/mission/child/starship/server/index.js` | Actor permissions, command costs, ship state, energy, rotation, alignment, approach, braking, docking rules |
 | Environment domain | `src/applets/app/child/mission/child/environment/server/index.js` | Mission clock, whether commands are allowed, and running/won/failed/stopped outcomes |
@@ -72,10 +78,13 @@ the Live session and joins its sideband, but does not proxy the audio stream.
 | 3D view | `src/applets/app/child/mission/child/3dworld/client/world.js` | Three.js objects, camera, stars, guide, smooth animation, resize and GPU cleanup |
 
 The Mission, GPT-Live, and GPT-Live session modules are grouped under
-`src/services/` because the main server creates these application services
-before loading the applets. Each service instance belongs to a browser
-connection. Applet companions receive the relevant service through registry
-injection.
+`src/services/` because `server.mjs` composes the application services before
+loading applets. Each service instance belongs to one browser connection. The
+registry injects Mission into the game applets and injects both Mission and
+`gptLive` into Channel. Channel starts and closes `gptLive`; Mission has no
+OpenAI integration object and handles game orchestration. The main server gives
+Mission a generic `onFailure(reason)` hook, which it wires to the Live service's
+failure announcement.
 
 ## The applet tree
 
@@ -161,8 +170,9 @@ prediction is visual only and never becomes input to a robot tool or game rule.
 1. `public/bootstrap.js` opens the `/runtime` WebSocket and waits for the first
    Inner Browsing snapshot.
 2. `server.mjs` accepts a browser connection and creates a connection-scoped
-   Mission service, applet registry, temporary state store, runtime, and runtime
-   protocol.
+   `OpenAILiveService`, Mission, applet registry, temporary state store, runtime,
+   and runtime protocol. The main server wires Mission's generic failure hook to
+   `gptLive.missionFailed(reason)`; Mission does not call an OpenAI API.
 3. The runtime loads the root `app` applet. The browser bootstrap creates the
    browser runtime and mounts its client companion.
 4. The user selects **Start mission**. The root applet operation calls
@@ -170,8 +180,10 @@ prediction is visual only and never becomes input to a robot tool or game rule.
 5. Mission loads `app/mission`, then Environment, Starship, World, and Channel
    with their initial state. The browser navigator materializes their client
    companions at the anchors in the Mission view.
-6. Channel starts the WebRTC setup asynchronously, so a slow microphone or
-   network request does not prevent the other applets from mounting.
+6. Channel's browser companion starts WebRTC setup asynchronously. Once it has
+   an SDP offer, it sends `Connect`; the Channel server companion calls
+   `gptLive.start(...)`. A slow microphone or network request does not prevent
+   the other applets from mounting.
 7. When Live reports `session.started` over the browser data channel, Channel
    sends the `Ready` operation. Mission starts the clock and 50 ms simulation
    updates.
@@ -207,6 +219,50 @@ creation starts the Live conversation; after the browser receives
 The browser data channel also carries Live events such as input and output
 transcript deltas. The Channel applet turns those deltas into the green terminal
 transcript. Audio tracks use the peer connection's media path.
+
+### Who owns Connect, Ready, and Closed?
+
+The Channel applet owns the Live communication lifecycle at the application
+boundary. Its browser companion gathers microphone permission, creates the peer
+connection and SDP offer, then calls the named `Connect` operation. The Channel
+server companion starts the connection-scoped Live adapter and supplies two
+callbacks: one for delegated application commands, and one for connection
+status. The adapter owns the OpenAI session and sideband protocol; it does not
+own the mission or the game rules.
+
+~~~js
+if (operation === "Connect") {
+  const missionId = data.missionId;
+  return gptLive.start(data.sdp, {
+    execute: command => missionId === mission.id && mission.active
+      ? mission.execute(command, "model")
+      : Promise.resolve({ status: "failed", reason: "mission_ended" }),
+    status: status => mission.setChannelStatus(status, missionId)?.catch(() => {}),
+  });
+}
+if (operation === "Ready") return mission.ready(data.missionId);
+if (operation === "Closed") return mission.end(data.message);
+~~~
+
+The implementation also checks mission IDs and bounds the close message. `Ready`
+arrives after the browser receives `session.started`; it starts the server-owned
+mission clock. `Closed` ends the mission and destroys its applet tree. Destroying
+Channel closes the Live service. The callback's captured mission ID prevents a
+late delegated command or sideband status from affecting a newer mission.
+
+The main server creates one `OpenAILiveService` per `/runtime` browser socket,
+but it does not start Live at construction. Channel starts it only when the
+browser sends `Connect`. On mission end, a closed Live conversation, or browser
+socket cleanup, destruction of the Channel companion calls `gptLive.close()`.
+The browser independently stops microphone tracks and closes WebRTC objects in
+`LiveClient.dispose()`.
+
+There are two context helpers, one at each transport boundary. The browser's
+`LiveClient.context()` sends ordinary guidance directly over the WebRTC data
+channel—for example, initial mission instructions after `Ready`. The server-side
+`OpenAILiveService.context()` sends OpenAI commentary over the sideband;
+`missionFailed()` uses it to announce a game failure. Neither helper carries
+game state or replaces the Starship rules.
 
 ## What does “Responses delegation” mean here?
 
@@ -249,9 +305,11 @@ inspect itself.
 4. **The adapter maps the name.** The OpenAI name `analyze_rotation_speed`
    becomes application command `analyzeRotationSpeed`. OpenAI's `call_id`
    remains in this adapter.
-5. **Mission executes against Starship state.** The actor is fixed to `model`.
-   Starship reads its stored `targetSpeed`, records that value, and charges the
-   command's energy cost. No 3D pixels, frame rate, or browser telemetry are read.
+5. **The Channel-supplied callback enters Mission.** The server adapter invokes
+   the callback created for this mission. It fixes the actor to `model` and calls
+   `mission.execute(command, "model")`; Mission dispatches to Starship. Starship
+   reads its stored `targetSpeed`, records that value, and charges the command's
+   energy cost. No 3D pixels, frame rate, or browser telemetry are read.
 6. **Mission publishes snapshots.** The Channel receives the latest robot task;
    Starship, Environment, and World receive their updated state through Inner
    Browsing.
@@ -263,11 +321,12 @@ inspect itself.
 The core adapter boundary looks like this (with unrelated validation omitted):
 
 ~~~js
-const event = envelope.event;
-if (envelope.type !== "response.event" ||
-    event?.type !== "response.output_item.done" ||
-    event.item?.type !== "function_call") return;
+// Channel's server companion passes this callback to gptLive.start().
+execute: command => missionId === mission.id && mission.active
+  ? mission.execute(command, "model")
+  : Promise.resolve({ status: "failed", reason: "mission_ended" })
 
+// Inside OpenAILiveService.handle(), after validating event and arguments:
 const item = event.item;
 const command = commands[item.name];
 const result = await this.execute(command);
@@ -303,9 +362,9 @@ the tool can obtain.
 
 ## How are robot commands checked?
 
-The OpenAI adapter maps tool names to an allowlisted command table and calls the
-Mission service directly. Mission uses a fixed actor and validates the command
-before it changes state.
+The OpenAI adapter maps tool names to application command names, then calls the
+`execute` callback supplied by Channel. That callback enters Mission with actor
+`model`; Mission and Starship validate the command before changing state.
 
 ~~~js
 const commands = Object.freeze({
@@ -316,8 +375,8 @@ const commands = Object.freeze({
   dock_objects: "dock",
 });
 
-// In the Mission service's Live integration callback:
-execute: command => this.execute(command, "model")
+// Channel supplies this application callback to OpenAILiveService.start():
+execute: command => mission.execute(command, "model")
 ~~~
 
 Mission checks that it is active, advances current simulation time, records the
@@ -358,9 +417,9 @@ Mission and Starship apply the same server-side validation and game rules used
 for delegated commands.
 
 Human commands use Inner Browsing because they begin in an applet UI. Delegated
-OpenAI commands call the Mission service through the server integration callback.
-Both paths converge on Mission and the same Starship domain. This distinction is
-important: Inner Browsing is the applet runtime and state channel, not a mandatory
+OpenAI commands enter Mission through the callback that Channel supplies when it
+starts the Live service. Both paths converge on Mission and the same Starship
+domain. Inner Browsing routes applet operations and state; it is not a mandatory
 proxy in front of every server method.
 
 ## What does Inner Browsing carry?
@@ -393,9 +452,11 @@ async publish() {
 }
 ~~~
 
-The Channel state is also updated when connection status or a robot result
-changes. It holds the latest model task for the “Robot / last command” display.
-The task history belongs to Mission; Channel presents a small part of that state.
+The OpenAI adapter's status callback calls `mission.setChannelStatus()`, which
+updates Channel's applet state through the runtime. When a model command
+completes, Mission publishes the newest model task there as well. Mission owns
+the task history and state publication; Channel displays connection status and
+the latest robot result.
 
 ## Who owns the simulation and 3D animation?
 
@@ -440,20 +501,26 @@ The World and HUD display these outcomes. They do not decide them.
 
 ## Why do the app services live outside the applets?
 
-The main server creates one Mission service and one OpenAI integration service
-for each browser connection before it assembles that connection's applet runtime.
-The applet definitions inject Mission into the applet server companions.
+The main server creates one `OpenAILiveService` and one Mission for each browser
+connection before it assembles that connection's applet runtime. It injects
+Mission into the game applets and both Mission and `gptLive` into Channel. The
+Channel server companion owns the Live applet lifecycle and passes a narrow
+callback into the adapter for delegated game commands.
 
 This keeps application composition and business state clear:
 
-- `services/mission.js` coordinates one game instance and its domains.
-- `services/gptLive.js` speaks OpenAI's Live and sideband protocols.
+- `services/mission.js` coordinates one game instance and its domains; it has no
+  OpenAI client, sideband, call ID, or Live `start()` / `close()` methods.
+- `services/gptLive.js` speaks OpenAI's Live and sideband protocols and returns
+  delegated results through the callback provided by Channel.
 - `services/gptLiveSession.js` holds prompts and schemas.
 - Applet server companions adapt lifecycle and named operations to those services.
 - Applet browser companions render state and collect human input.
 
-The applet server is not a second Mission service. It receives the same instance
-that the root server constructed.
+Mission's `onFailure(reason)` is an application callback, not an OpenAI concept.
+The main server composes it with `gptLive.missionFailed(reason)` so a terminal
+game failure can be announced over the open sideband. This keeps composition at
+the server boundary without making Mission own the communication service.
 
 ## Where is the API key? Is this production security?
 
@@ -474,11 +541,14 @@ a deployment to untrusted users.
   rather than changing game state.
 - A terminal game outcome stops commands, but read-only inspection can remain
   available while the mission subtree is open.
-- End mission, Live closure, or browser socket closure closes the integration
-  service and destroys the mission subtree.
-- Browser cleanup stops microphone tracks, closes WebRTC objects, stops the
-  renderer animation, disconnects the resize observer, and disposes Three.js
-  resources.
+- If the browser reports a closed Live session, Channel sends `Closed`; Mission
+  ends and destroys its subtree, and Channel destruction closes the Live service.
+- End mission follows the same server-side teardown: Mission destroys the
+  subtree and Channel's `destroy()` closes the adapter and sideband.
+- Browser socket closure disposes the runtime and app tree; Channel destruction
+  closes the per-connection Live service. Browser companions independently stop
+  microphone tracks, close WebRTC objects, stop renderer animation, disconnect
+  resize observers, and dispose Three.js resources.
 - Reloading opens a new browser connection and a fresh Mission. The demo does
   not resume a previous session.
 
@@ -488,6 +558,7 @@ a deployment to untrusted users.
 | --- | --- |
 | Tool names, prompt, or delegated capabilities | `src/services/gptLiveSession.js` |
 | Live creation, sideband event handling, call IDs | `src/services/gptLive.js` |
+| Channel Connect/Ready/Closed and Live lifecycle | Channel `server/index.js` |
 | Game lifecycle, command dispatch, state publication | `src/services/mission.js` |
 | Permissions, energy, physics, docking rules | Starship `server/index.js` |
 | Clock and terminal outcomes | Environment `server/index.js` |
