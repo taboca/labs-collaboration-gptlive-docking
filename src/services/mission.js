@@ -16,6 +16,9 @@ import {
   Domain as Environment,
 } from './applets/app/child/mission/child/environment/server/index.js';
 
+// Keep the cockpit task history to the 20 most recent commands.
+const MAX_TASK_HISTORY = 20;
+
 export const paths = Object.freeze({
   mission: 'app/mission',
   channel: 'app/mission/channel',
@@ -198,7 +201,11 @@ export class Mission {
       args,
       status: 'queued',
     };
-    this.tasks = [...this.tasks.slice(-19), task];
+    const updatedTasks = [...this.tasks, task];
+    if (updatedTasks.length > MAX_TASK_HISTORY) {
+      updatedTasks.shift();
+    }
+    this.tasks = updatedTasks;
 
     let result;
     switch (command) {
