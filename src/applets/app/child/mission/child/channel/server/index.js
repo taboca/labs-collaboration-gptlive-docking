@@ -24,9 +24,9 @@ export function createServerOperations({ mission, gptLive }) {
         const missionId = data.missionId;
         // Hook delegated Channel commands into Mission's authoritative handler.
         // OpenAILiveService calls this after mapping the tool to an app command.
-        const executeDelegatedCommand = command => {
+        const executeDelegatedCommand = (command, args = {}) => {
           if (missionId === mission.id && mission.active) {
-            return mission.execute(command, 'model');
+            return mission.execute(command, 'model', args);
           }
           return Promise.resolve({
             status: 'failed',

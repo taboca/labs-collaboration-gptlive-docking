@@ -21,16 +21,6 @@ export const COMMANDS = Object.freeze({
   [COMMAND_USER_NUDGE]: { actor: "user", cost: 1 },
 });
 
-export function assertCommandAllowed(name, actor, args = {}) {
-  const command = COMMANDS[name];
-  if (!command || command.actor !== actor) throw new Error("Actor is not allowed to use this command");
-  if (name === COMMAND_USER_SET_ROTATION_SPEED && (!Number.isFinite(args.value) || args.value <= 0 || args.value > 1000))
-    throw new Error("Rotation must be between 0 and 1000 degrees/sec");
-  if (name === COMMAND_USER_NUDGE && (![args.x, args.y].every(Number.isFinite) || Math.abs(args.x) + Math.abs(args.y) !== 5))
-    throw new Error("Nudge must be one five-unit step");
-  return command;
-}
-
 export class Domain {
   constructor(environment) {
     this.environment = environment;
@@ -48,6 +38,30 @@ export class Domain {
       requestedSpeed: 0, distance: 18, velocity: 0, motion: "coast",
       lastTick: now === 0 ? null : now,
     });
+  }
+
+  validateCommand(name, actor, args = {}) {
+    const command = COMMANDS[name];
+    if (!command || command.actor !== actor) {
+      throw new Error("Actor is not allowed to use this command");
+    }
+
+    if (name === COMMAND_USER_SET_ROTATION_SPEED) {
+      const speed = args.value;
+      if (!Number.isFinite(speed) || speed <= 0 || speed > 1000) {
+        throw new Error("Rotation must be between 0 and 1000 degrees/sec");
+      }
+    }
+
+    if (name === COMMAND_USER_NUDGE) {
+      const isFiveUnitStep = [args.x, args.y].every(Number.isFinite)
+        && Math.abs(args.x) + Math.abs(args.y) === 5;
+      if (!isFiveUnitStep) {
+        throw new Error("Nudge must be one five-unit step");
+      }
+    }
+
+    return command;
   }
 
   randomOffset() {
@@ -76,6 +90,31 @@ export class Domain {
     this.environment.updateFromStarship(this.snapshot());
     if (!this.environment.allowsCommands) return this.failure(this.environment.reason);
     return action();
+  }
+
+  // Mission forwards the validated command and its complete argument object.
+  // Keep the command-to-action map beside the Starship actions and rules.
+  dispatchCommand(command, actor, args = {}) {
+    switch (command) {
+      case COMMAND_USER_SET_ROTATION_SPEED:
+        return this.setRotationSpeed(args.value, actor);
+      case COMMAND_USER_BEGIN_ALIGNMENT:
+        return this.beginAlignment(actor);
+      case COMMAND_USER_NUDGE:
+        return this.nudge(args.x, args.y, actor);
+      case COMMAND_MODEL_ANALYZE_ROTATION_SPEED:
+        return this.analyzeRotationSpeed(actor);
+      case COMMAND_MODEL_INSPECT:
+        return this.inspect(actor);
+      case COMMAND_MODEL_APPROACH:
+        return this.approach(actor);
+      case COMMAND_MODEL_BRAKE:
+        return this.brake(actor);
+      case COMMAND_MODEL_DOCK:
+        return this.dock(actor);
+      default:
+        throw new Error(`Unknown command: ${command}`);
+    }
   }
 
   setRotationSpeed(value, actor) {

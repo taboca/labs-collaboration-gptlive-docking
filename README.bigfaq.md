@@ -66,11 +66,11 @@ the Live session and joins its sideband, but does not proxy the audio stream.
 | --- | --- | --- |
 | HTTP server and runtime transport | `server.mjs` | Static assets, applet module routes, per-connection runtime setup, origin checking, WebSocket protocol adaptation, connection cleanup |
 | Applet registry | `src/appletRegistry.js` and each applet's root `index.js` | Definitions, logical paths, parent anchors, client module locations, service injection |
-| Mission orchestration | `src/services/mission.js` | Per-connection game state and domains, command dispatch, mission lifecycle, simulation ticks, task history, state publication, generic failure notification |
+| Mission orchestration | `src/services/mission.js` | Per-connection game state and domains, command coordination, mission lifecycle, simulation ticks, task history, state publication, generic failure notification |
 | Channel server companion | `src/applets/app/child/mission/child/channel/server/index.js` | Handles Connect, Ready, and Closed; starts Live with Mission callbacks and closes it when Channel is destroyed |
 | OpenAI Live integration | `src/services/gptLive.js` | OpenAI Live session creation, sideband connection, tool event decoding, call ID deduplication, application command mapping, tool result return, OpenAI-specific context events |
 | OpenAI session instructions | `src/services/gptLiveSession.js` | Live model, Live instructions, Responses model, delegated instructions, tool schemas |
-| Starship domain | `src/applets/app/child/mission/child/starship/server/index.js` | Actor permissions, command costs, ship state, energy, rotation, alignment, approach, braking, docking rules |
+| Starship domain | `src/applets/app/child/mission/child/starship/server/index.js` | Command validation and routing, actor permissions, command costs, ship state, energy, rotation, alignment, approach, braking, docking rules |
 | Environment domain | `src/applets/app/child/mission/child/environment/server/index.js` | Mission clock, whether commands are allowed, and running/won/failed/stopped outcomes |
 | Voice user interface | Channel client and `live-client.js` | Microphone, WebRTC, audio playback, captions, connection status, last robot result |
 | Human controls | Starship client | Rotation form, alignment start, X/Y nudge buttons and keyboard controls |
@@ -340,7 +340,9 @@ inspect itself.
    remains in this adapter.
 5. **The Channel-supplied callback enters Mission.** The server adapter invokes
    the callback created for this mission. It fixes the actor to `model` and calls
-   `mission.execute(command, "model")`; Mission dispatches to Starship. Starship
+   `mission.execute(command, "model", args)`. Mission checks that the request
+   is allowed before advancing or recording a task, then forwards the command,
+   actor, and argument object to Starship. Starship selects the matching action,
    reads its stored `targetSpeed`, records that value, and charges the command's
    energy cost. No 3D pixels, frame rate, or browser telemetry are read.
 6. **Mission publishes snapshots.** The Channel receives the latest robot task;
@@ -365,7 +367,8 @@ if (
 
 const item = event.item;
 const command = commands[item.name];
-const result = await this.executeCommand(command);
+const args = JSON.parse(item.arguments || "{}");
+const result = await this.executeCommand(command, args);
 
 this.send({
   type: "response.item.create",
@@ -399,9 +402,10 @@ the tool can obtain.
 ## How are robot commands checked?
 
 The OpenAI adapter maps tool names to application command names, then invokes
-the `executeCommand` callback supplied by Channel. Channel's
-`executeDelegatedCommand` callback enters Mission with actor `model`; Mission
-and Starship validate the command before changing state.
+the `executeCommand` callback supplied by Channel, with both the mapped command
+and parsed argument object. Channel's `executeDelegatedCommand` callback enters
+Mission with actor `model`; Starship validates the request before Mission
+advances simulation or records a task, then dispatches it to the matching action.
 
 ~~~js
 const commands = Object.freeze({
@@ -414,12 +418,18 @@ const commands = Object.freeze({
 
 // Inside OpenAILiveService.handle(), after the tool name is mapped:
 const command = commands[item.name];
-const result = await this.executeCommand(command);
+const args = JSON.parse(item.arguments || "{}");
+const result = await this.executeCommand(command, args);
 ~~~
 
-Mission checks that it is active, advances current simulation time, records the
-task, calls the Starship domain, saves the result, and publishes state. The
-Starship command table owns the actor and cost:
+Mission checks that it is active, asks Starship to validate the actor and
+arguments, advances current simulation time, and records the task. It then
+forwards the command, actor, and complete argument object to
+`Starship.dispatchCommand()`. Starship routes the request to its action; Mission
+saves the result and publishes state. Invalid actors or arguments are rejected
+before a task is recorded. Valid commands that fail a game condition return a
+normal failed result and appear in task history. The Starship command table
+owns the actor and cost:
 
 ~~~js
 export const COMMAND_MODEL_INSPECT = "inspect";
@@ -443,10 +453,12 @@ export const COMMANDS = Object.freeze({
 });
 ~~~
 
-The actor-prefixed constant names make ownership visible in Mission dispatch and
-the Starship rule table. Their values remain the existing application command
+The actor-prefixed constant names make ownership visible in Starship dispatch
+and its rule table. Their values remain the existing application command
 strings, so browser operations and Live tool mapping keep using names such as
-`inspect` and `analyzeRotationSpeed`.
+`inspect` and `analyzeRotationSpeed`. Current delegated tools have empty argument
+schemas, so they forward `{}` today; human controls already forward values such
+as rotation speed and the X/Y nudge through the same Mission-to-Starship path.
 
 The tool schema and command table serve different purposes. The schema tells the
 Responses model what it may request. The server command table enforces which
@@ -611,8 +623,8 @@ a deployment to untrusted users.
 | Tool names, prompt, or delegated capabilities | `src/services/gptLiveSession.js` |
 | Live creation, sideband event handling, call IDs | `src/services/gptLive.js` |
 | Channel Connect/Ready/Closed and Live lifecycle | Channel `server/index.js` |
-| Game lifecycle, command dispatch, state publication | `src/services/mission.js` |
-| Permissions, energy, physics, docking rules | Starship `server/index.js` |
+| Game lifecycle, command coordination, state publication | `src/services/mission.js` |
+| Command validation and routing, permissions, energy, physics, docking rules | Starship `server/index.js` |
 | Clock and terminal outcomes | Environment `server/index.js` |
 | Applet identity, parent anchors, companion modules | The applet's root `index.js` |
 | Human controls and tool-result display | Corresponding applet `client/index.js` |

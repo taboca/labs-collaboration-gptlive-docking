@@ -1,20 +1,9 @@
 import { randomUUID } from 'node:crypto';
 import { performance } from 'node:perf_hooks';
-import {
-  assertCommandAllowed,
-  COMMAND_MODEL_ANALYZE_ROTATION_SPEED,
-  COMMAND_MODEL_APPROACH,
-  COMMAND_MODEL_BRAKE,
-  COMMAND_MODEL_DOCK,
-  COMMAND_MODEL_INSPECT,
-  COMMAND_USER_BEGIN_ALIGNMENT,
-  COMMAND_USER_NUDGE,
-  COMMAND_USER_SET_ROTATION_SPEED,
-  Domain as Starship,
-} from './applets/app/child/mission/child/starship/server/index.js';
+import { Domain as Starship } from '../applets/app/child/mission/child/starship/server/index.js';
 import {
   Domain as Environment,
-} from './applets/app/child/mission/child/environment/server/index.js';
+} from '../applets/app/child/mission/child/environment/server/index.js';
 
 // Keep the cockpit task history to the 20 most recent commands.
 const MAX_TASK_HISTORY = 20;
@@ -191,7 +180,8 @@ export class Mission {
       return { status: 'failed', reason: 'mission_ended' };
     }
 
-    assertCommandAllowed(command, actor, args);
+    // Reject bad requests before advancing the clock or recording a task.
+    this.starship.validateCommand(command, actor, args);
     this.advance();
 
     const task = {
@@ -207,35 +197,8 @@ export class Mission {
     }
     this.tasks = updatedTasks;
 
-    let result;
-    switch (command) {
-      case COMMAND_USER_SET_ROTATION_SPEED:
-        result = this.starship.setRotationSpeed(args.value, actor);
-        break;
-      case COMMAND_USER_BEGIN_ALIGNMENT:
-        result = this.starship.beginAlignment(actor);
-        break;
-      case COMMAND_USER_NUDGE:
-        result = this.starship.nudge(args.x, args.y, actor);
-        break;
-      case COMMAND_MODEL_ANALYZE_ROTATION_SPEED:
-        result = this.starship.analyzeRotationSpeed(actor);
-        break;
-      case COMMAND_MODEL_INSPECT:
-        result = this.starship.inspect(actor);
-        break;
-      case COMMAND_MODEL_APPROACH:
-        result = this.starship.approach(actor);
-        break;
-      case COMMAND_MODEL_BRAKE:
-        result = this.starship.brake(actor);
-        break;
-      case COMMAND_MODEL_DOCK:
-        result = this.starship.dock(actor);
-        break;
-      default:
-        throw new Error(`Unknown command: ${command}`);
-    }
+    // Starship owns the command-to-action map; Mission owns the task lifecycle.
+    const result = this.starship.dispatchCommand(command, actor, args);
 
     this.syncPhase();
     task.status = result.status;

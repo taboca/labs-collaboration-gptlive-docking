@@ -138,7 +138,7 @@ export class OpenAILiveService {
       ) {
         throw new Error('Unsupported tool or arguments');
       }
-      result = await this.executeCommand(commands[item.name]);
+      result = await this.executeCommand(commands[item.name], args);
     } catch (error) {
       result = { status: 'failed', reason: error.message };
     }

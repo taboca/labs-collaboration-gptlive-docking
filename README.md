@@ -83,8 +83,8 @@ Channel starts and closes it; Mission receives only a generic failure callback.
 | Location | Responsibility |
 | --- | --- |
 | [server.mjs](server.mjs) | Serve browser modules, assemble the runtime, and handle the application WebSocket. Applet entry-module routes come from the registry; helper modules have explicit routes. |
-| [services/mission.js](src/services/mission.js) | Create the game domains, coordinate commands and mission lifetime, advance simulation, retain recent tasks, and publish applet state. |
-| [Starship server](src/applets/app/child/mission/child/starship/server/index.js) | Command permissions and costs, energy, rotation, alignment, thrust, braking, and docking checks. |
+| [services/mission.js](src/services/mission.js) | Create the game domains, coordinate command results and mission lifetime, advance simulation, retain recent tasks, and publish applet state. |
+| [Starship server](src/applets/app/child/mission/child/starship/server/index.js) | Validate and route commands; own permissions, costs, energy, rotation, alignment, thrust, braking, and docking rules. |
 | [Environment server](src/applets/app/child/mission/child/environment/server/index.js) | Countdown and running, won, failed, and stopped states. Starship supplies energy and docking outcomes. |
 | [Channel client](src/applets/app/child/mission/child/channel/client/index.js) and [LiveClient](src/applets/app/child/mission/child/channel/client/live-client.js) | Microphone, WebRTC, audio, transcript, connection status, and last robot result. |
 | [Channel server](src/applets/app/child/mission/child/channel/server/index.js) | Owns Connect, Ready, and Closed operations; starts Live and closes it when the Channel applet is destroyed. |
@@ -120,10 +120,12 @@ only with game commands and results.
 When the pilot says “measure the rotation”:
 
 1. Live delegates a tool call, which arrives on the server sideband.
-2. The OpenAI service maps `analyze_rotation_speed` to `analyzeRotationSpeed` and
-   calls Mission with actor `model`.
-3. Starship reads the target speed already stored in its state and charges the
-   command’s energy cost. Mission records the result and publishes updated state.
+2. The OpenAI service maps `analyze_rotation_speed` to `analyzeRotationSpeed`
+   and calls Mission with actor `model` and the parsed tool arguments.
+3. Mission validates the request through Starship, then forwards the command,
+   actor, and argument object to Starship’s dispatcher. Starship reads the target
+   speed already stored in its state and charges the command’s energy cost.
+   Mission records the result and publishes updated state.
 4. Inner Browsing updates the browser applets. Channel displays the last result;
    Environment refreshes the HUD; World renders the ship state.
 5. The OpenAI service returns `function_call_output` using `response.item.create`,
