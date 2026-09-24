@@ -8,6 +8,26 @@ import {
 // Keep the cockpit task history to the 20 most recent commands.
 const MAX_TASK_HISTORY = 20;
 
+const FAILURE_MESSAGES = Object.freeze({
+  time_expired:
+    'Mission failed: time ran out. Say: See you on the other side.',
+  energy_depleted:
+    'Mission failed: the starship ran out of energy. Say: See you on the other side.',
+  unsafe_contact:
+    'Mission failed after unsafe contact. Say: See you on the other side.',
+});
+
+const COUNTDOWN_COMMENTARY = Object.freeze([
+  {
+    remainingMs: 30_000,
+    content: 'Inform the user that there are only 30 seconds left.',
+  },
+  {
+    remainingMs: 10_000,
+    content: 'Inform the user that there are only 10 seconds left. Keep it short and convey some urgency.',
+  },
+]);
+
 export const paths = Object.freeze({
   mission: 'app/mission',
   channel: 'app/mission/channel',
@@ -19,15 +39,17 @@ export const paths = Object.freeze({
 // Mission owns the authoritative simulation. Browser applets receive snapshots and
 // render them; robot tools read this service directly instead of asking the 3D view.
 export class Mission {
-  constructor({ config = {}, now = () => performance.now(), onFailure = () => {} }) {
+  constructor({ config = {}, now = () => performance.now(), gptLive }) {
     this.config = config;
     this.now = now;
-    this.onFailure = onFailure;
+    // Mission owns the wording; GPT-Live only delivers the supplied context.
+    this.gptLive = gptLive;
     this.environment = new Environment({
       durationMs: config.missionDurationMs || 60_000,
     });
     this.starship = new Starship(this.environment);
     this.tasks = [];
+    this.announcedCountdowns = new Set();
     this.active = false;
     this.phase = 'idle';
     this.announcedPhase = null;
@@ -45,6 +67,7 @@ export class Mission {
     this.active = true;
     this.phase = 'idle';
     this.tasks = [];
+    this.announcedCountdowns.clear();
     this.announcedPhase = null;
     this.id = randomUUID();
     this.environment.reset();
@@ -143,9 +166,41 @@ export class Mission {
       return;
     }
 
+    const previousRemainingMs = this.environment.remainingMs;
     const elapsed = this.environment.tick(now);
+    this.announceCountdown(previousRemainingMs);
     this.starship.tick(now, elapsed);
     this.syncPhase();
+  }
+
+  announceCountdown(previousRemainingMs) {
+    if (this.environment.state !== 'running') {
+      return;
+    }
+
+    const remainingMs = this.environment.remainingMs;
+    for (const announcement of COUNTDOWN_COMMENTARY) {
+      const crossedThreshold = previousRemainingMs > announcement.remainingMs
+        && remainingMs <= announcement.remainingMs;
+      if (!crossedThreshold || this.announcedCountdowns.has(announcement.remainingMs)) {
+        continue;
+      }
+
+      this.announcedCountdowns.add(announcement.remainingMs);
+      this.sendCommentary(announcement.content);
+    }
+  }
+
+  sendCommentary(content) {
+    if (typeof this.gptLive?.context !== 'function') {
+      return;
+    }
+
+    try {
+      this.gptLive.context(content);
+    } catch (error) {
+      console.error('Mission commentary could not be sent:', error);
+    }
   }
 
   syncPhase() {
@@ -161,7 +216,10 @@ export class Mission {
 
     this.announcedPhase = state;
     if (state === 'failed') {
-      this.onFailure(this.environment.reason);
+      const reason = this.environment.reason;
+      const message = FAILURE_MESSAGES[reason] ||
+        `Mission failed: ${String(reason).replaceAll('_', ' ')}. Say: See you on the other side.`;
+      this.sendCommentary(message);
     }
   }
 

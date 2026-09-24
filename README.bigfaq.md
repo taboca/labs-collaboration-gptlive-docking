@@ -81,10 +81,10 @@ The Mission, GPT-Live, and GPT-Live session modules are grouped under
 `src/services/` because `server.mjs` composes the application services before
 loading applets. Each service instance belongs to one browser connection. The
 registry injects Mission into the game applets and injects both Mission and
-`gptLive` into Channel. Channel starts and closes `gptLive`; Mission has no
-OpenAI integration object and handles game orchestration. The main server gives
-Mission a generic `onFailure(reason)` hook, which it wires to the Live service's
-failure announcement.
+`gptLive` into Channel. Channel starts and closes `gptLive`; Mission handles game
+orchestration and uses only its generic `context(content)` capability to send
+mission-authored countdown and failure commentary. The main server supplies this
+communication collaborator when it constructs Mission.
 
 ## The applet tree
 
@@ -171,8 +171,9 @@ prediction is visual only and never becomes input to a robot tool or game rule.
    Inner Browsing snapshot.
 2. `server.mjs` accepts a browser connection and creates a connection-scoped
    `OpenAILiveService`, Mission, applet registry, temporary state store, runtime,
-   and runtime protocol. The main server wires Mission's generic failure hook to
-   `gptLive.missionFailed(reason)`; Mission does not call an OpenAI API.
+   and runtime protocol. The main server passes the generic GPT-Live communication
+   service to Mission; Mission supplies its own countdown and failure messages
+   through `context(content)`. GPT-Live has no mission-specific API.
 3. The runtime loads the root `app` applet. The browser bootstrap creates the
    browser runtime and mounts its client companion.
 4. The user selects **Start mission**. The root applet operation calls
@@ -293,9 +294,9 @@ The browser independently stops microphone tracks and closes WebRTC objects in
 There are two context helpers, one at each transport boundary. The browser's
 `LiveClient.context()` sends ordinary guidance directly over the WebRTC data
 channel—for example, initial mission instructions after `Ready`. The server-side
-`OpenAILiveService.context()` sends OpenAI commentary over the sideband;
-`missionFailed()` uses it to announce a game failure. Neither helper carries
-game state or replaces the Starship rules.
+`OpenAILiveService.context()` sends OpenAI commentary over the sideband. Mission
+uses this generic method for countdown and failure commentary. Neither helper
+carries game state or replaces the Starship rules.
 
 ## What does “Responses delegation” mean here?
 
@@ -526,6 +527,8 @@ the latest robot result.
 
 Mission runs a server timer about every 50 ms while the phase is running. Each
 tick advances Environment's clock and Starship's motion, then publishes snapshots.
+Mission sends one-time commentary through generic `gptLive.context(content)` as
+the countdown crosses 30 and 10 seconds.
 Starship state includes the energy, current/target angles and speed, X/Y offset,
 distance, velocity, motion mode, and docking readiness.
 
@@ -581,10 +584,10 @@ This keeps application composition and business state clear:
 - Applet server companions adapt lifecycle and named operations to those services.
 - Applet browser companions render state and collect human input.
 
-Mission's `onFailure(reason)` is an application callback, not an OpenAI concept.
-The main server composes it with `gptLive.missionFailed(reason)` so a terminal
-game failure can be announced over the open sideband. This keeps composition at
-the server boundary without making Mission own the communication service.
+Mission owns countdown thresholds, failure reasons, and the messages it sends.
+It receives GPT-Live as a communication collaborator and uses only its generic
+`context(content)` method. The GPT-Live service delivers the supplied text without
+a mission-specific notification method.
 
 ## Where is the API key? Is this production security?
 

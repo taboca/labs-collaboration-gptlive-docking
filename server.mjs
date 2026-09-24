@@ -15,7 +15,7 @@ import { OpenAILiveService } from './src/services/gptLive.js';
 // The server owns the connection-scoped Inner Browsing application session.
 // Applet server modules are loaded by this runtime after it has been assembled.
 export async function createApp({ gptLive, config, publish = () => {} }) {
-  const mission = new Mission({ config, onFailure: reason => gptLive.missionFailed(reason) });
+  const mission = new Mission({ config, gptLive });
   const registry = registryFor({ mission, gptLive });
   const stateRoot = mkdtempSync(join(tmpdir(), 'starship-'));
   const store = createStateTreeStore({ stateRoot, registry });

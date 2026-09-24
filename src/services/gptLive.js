@@ -180,10 +180,6 @@ export class OpenAILiveService {
     }
   }
 
-  missionFailed(reason) {
-    this.context(`Mission failed: ${reason}. Say: See you on the other side.`);
-  }
-
   close() {
     ++this.generation;
     this.starting = false;

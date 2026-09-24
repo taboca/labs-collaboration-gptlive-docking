@@ -160,7 +160,8 @@ canvas or wait for animation frames.
 The 3D client uses `requestAnimationFrame` to draw smooth rotation and forward
 motion between snapshots. Visual prediction is capped at 150 ms if delivery
 stalls. Drawing the world does not advance the authoritative clock or decide
-whether docking succeeds.
+whether docking succeeds. Mission also sends one-time GPT-Live commentary when
+the countdown crosses 30 and 10 seconds remaining.
 
 **Start mission** loads the mission subtree. **End mission**, channel closure,
 or tab disconnection cleans up its services and applets, including audio tracks,
